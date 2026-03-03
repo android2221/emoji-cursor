@@ -20,6 +20,10 @@ struct ContentView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            if !cursorManager.hasAccessibility {
+                accessibilityBanner
+                Divider()
+            }
             ScrollView {
                 VStack(spacing: 16) {
                     previewSection
@@ -35,6 +39,30 @@ struct ContentView: View {
     }
 
     // MARK: - Subviews
+
+    private var accessibilityBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bolt.fill")
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Enable Low-Latency Mode")
+                    .font(.caption).bold()
+                Text("Grant Accessibility access for smoother cursor tracking.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button("Enable") {
+                cursorManager.requestAccessibilityPermission()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.yellow.opacity(0.1))
+    }
 
     private var header: some View {
         HStack {
