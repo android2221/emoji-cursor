@@ -20,13 +20,10 @@ struct ContentView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if !cursorManager.hasAccessibility {
-                accessibilityBanner
-                Divider()
-            }
             ScrollView {
                 VStack(spacing: 16) {
                     previewSection
+                    sizeSection
                     quickPickSection
                     customPickSection
                 }
@@ -39,30 +36,6 @@ struct ContentView: View {
     }
 
     // MARK: - Subviews
-
-    private var accessibilityBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "bolt.fill")
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Enable Low-Latency Mode")
-                    .font(.caption).bold()
-                Text("Grant Accessibility access for smoother cursor tracking.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Button("Enable") {
-                cursorManager.requestAccessibilityPermission()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.yellow.opacity(0.1))
-    }
 
     private var header: some View {
         HStack {
@@ -95,6 +68,25 @@ struct ContentView: View {
                     .frame(height: 80)
                 Text(selectedEmoji)
                     .font(.system(size: 48))
+            }
+        }
+    }
+
+    private var sizeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Size")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Text("🔹")
+                    .font(.system(size: 10))
+                Slider(value: Binding(
+                    get: { cursorManager.emojiSize },
+                    set: { cursorManager.updateSize($0) }
+                ), in: 16...64, step: 2)
+                Text("🔷")
+                    .font(.system(size: 18))
             }
         }
     }
