@@ -2,10 +2,8 @@ import AppKit
 import ApplicationServices
 import ServiceManagement
 
-/// Floats an emoji decoration next to the system cursor. The real pointer
-/// stays visible — the emoji just rides along as a charm / gem.
-/// Hides automatically in lock-step with the system cursor by polling
-/// its actual visibility state.
+/// Floats an emoji charm next to the system cursor with springy physics.
+/// Hides in lock-step with the system cursor by polling CGCursorIsVisible.
 final class CursorManager: ObservableObject {
     static let shared = CursorManager()
 
@@ -25,10 +23,23 @@ final class CursorManager: ObservableObject {
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var visibilityTimer: DispatchSourceTimer?
+    private var displayLink: CVDisplayLink?
 
-    /// Offset from cursor tip so the emoji sits just below-right of the arrow.
-    private let offset = CGPoint(x: 5, y: -6)
-    @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: "emojiSize") as? CGFloat ?? 32
+    /// Where the emoji wants to be (cursor pos + offset), in screen coords.
+    private var targetPosition: CGPoint = .zero
+    /// Where the emoji actually is right now (lags behind via spring).
+    private var currentPosition: CGPoint = .zero
+    /// Velocity for the spring simulation.
+    private var velocity: CGPoint = .zero
+
+    // Spring parameters
+    private let springStiffness: CGFloat = 0.35
+    private let springDamping: CGFloat = 0.75
+
+    /// Offset from cursor tip — tuck it right against the arrow.
+    private let offset = CGPoint(x: 3, y: -4)
+
+    @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: "emojiSize") as? CGFloat ?? 28
 
     private var emojiHidden = false
 
@@ -51,7 +62,14 @@ final class CursorManager: ObservableObject {
         setupOverlays()
         startTracking()
         startVisibilityPolling()
-        syncPosition(NSEvent.mouseLocation)
+        startDisplayLink()
+
+        // Snap to initial position (no spring lag on first show)
+        let pos = NSEvent.mouseLocation
+        targetPosition = CGPoint(x: pos.x + offset.x, y: pos.y + offset.y)
+        currentPosition = targetPosition
+        velocity = .zero
+        updateLayerPositions()
     }
 
     func deactivate() {
@@ -60,6 +78,7 @@ final class CursorManager: ObservableObject {
         onStatusChange?(nil)
         stopTracking()
         stopVisibilityPolling()
+        stopDisplayLink()
         tearDownOverlays()
     }
 
@@ -115,6 +134,13 @@ final class CursorManager: ObservableObject {
             layer.anchorPoint = CGPoint(x: 0, y: 1)
             layer.contentsGravity = .resizeAspect
             layer.contents = image
+
+            // Subtle drop shadow for depth
+            layer.shadowColor = NSColor.black.cgColor
+            layer.shadowOpacity = 0.3
+            layer.shadowOffset = CGSize(width: 0.5, height: -1)
+            layer.shadowRadius = 2
+
             view.layer?.addSublayer(layer)
 
             window.orderFrontRegardless()
@@ -194,7 +220,7 @@ final class CursorManager: ObservableObject {
                 let mgr = Unmanaged<CursorManager>.fromOpaque(info).takeUnretainedValue()
                 let cg = event.location
                 let h = NSScreen.screens.first?.frame.height ?? 0
-                mgr.syncPosition(NSPoint(x: cg.x, y: h - cg.y))
+                mgr.setTarget(NSPoint(x: cg.x, y: h - cg.y))
                 return Unmanaged.passRetained(event)
             }, userInfo: ptr
         ) else { return false }
@@ -209,31 +235,100 @@ final class CursorManager: ObservableObject {
     private func installNSEventMonitors() {
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
-            self?.syncPosition(NSEvent.mouseLocation)
+            self?.setTarget(NSEvent.mouseLocation)
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-            self?.syncPosition(NSEvent.mouseLocation)
+            self?.setTarget(NSEvent.mouseLocation)
             return event
         }
     }
 
+    /// Called on every mouse event — just updates the target, the display
+    /// link handles the smooth interpolation.
+    private func setTarget(_ mouse: NSPoint) {
+        targetPosition = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
+    }
+
+    // MARK: - Display link (spring physics)
+
+    private func startDisplayLink() {
+        var link: CVDisplayLink?
+        CVDisplayLinkCreateWithActiveCGDisplays(&link)
+        guard let link else { return }
+
+        let ptr = Unmanaged.passUnretained(self).toOpaque()
+        CVDisplayLinkSetOutputCallback(link, { _, _, _, _, _, userInfo -> CVReturn in
+            guard let userInfo else { return kCVReturnSuccess }
+            let mgr = Unmanaged<CursorManager>.fromOpaque(userInfo).takeUnretainedValue()
+            DispatchQueue.main.async { mgr.stepSpring() }
+            return kCVReturnSuccess
+        }, ptr)
+
+        CVDisplayLinkStart(link)
+        displayLink = link
+    }
+
+    private func stopDisplayLink() {
+        if let link = displayLink {
+            CVDisplayLinkStop(link)
+        }
+        displayLink = nil
+    }
+
+    /// Advance the spring simulation one tick and update layers.
+    private func stepSpring() {
+        guard isActive, !emojiHidden else { return }
+
+        // Spring force: pull currentPosition toward targetPosition
+        let dx = targetPosition.x - currentPosition.x
+        let dy = targetPosition.y - currentPosition.y
+
+        // If close enough and barely moving, snap to avoid endless micro-updates
+        let dist = sqrt(dx * dx + dy * dy)
+        let speed = sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
+        if dist < 0.3 && speed < 0.3 {
+            if currentPosition.x != targetPosition.x || currentPosition.y != targetPosition.y {
+                currentPosition = targetPosition
+                velocity = .zero
+                updateLayerPositions()
+            }
+            return
+        }
+
+        velocity.x += dx * springStiffness
+        velocity.y += dy * springStiffness
+        velocity.x *= springDamping
+        velocity.y *= springDamping
+        currentPosition.x += velocity.x
+        currentPosition.y += velocity.y
+
+        updateLayerPositions()
+    }
+
+    private func updateLayerPositions() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for i in overlayWindows.indices {
+            let origin = overlayWindows[i].frame.origin
+            emojiLayers[i].position = CGPoint(
+                x: currentPosition.x - origin.x,
+                y: currentPosition.y - origin.y
+            )
+        }
+        CATransaction.commit()
+    }
+
     // MARK: - Cursor visibility polling
 
-    /// Resolve the actual CGCursorIsVisible function at runtime.
-    /// The symbol exists in the CoreGraphics dylib but the macOS 15 SDK
-    /// header marks it unavailable, so we load it dynamically.
-    /// Falls back to trying _CGSDefaultConnection + CGSCursorIsVisible(conn).
     private static let queryCursorVisible: (() -> Bool)? = {
         let cg = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
         guard let handle = dlopen(cg, RTLD_LAZY) else { return nil }
 
-        // Try 1: CGCursorIsVisible() — public but deprecated/unavailable in SDK
         if let sym = dlsym(handle, "CGCursorIsVisible") {
             let fn = unsafeBitCast(sym, to: (@convention(c) () -> Int32).self)
             return { fn() != 0 }
         }
 
-        // Try 2: _CGSDefaultConnection() + CGSCursorIsVisible(conn)
         if let connSym = dlsym(handle, "_CGSDefaultConnection"),
            let visSym = dlsym(handle, "CGSCursorIsVisible") {
             let connFn = unsafeBitCast(connSym, to: (@convention(c) () -> Int32).self)
@@ -267,21 +362,6 @@ final class CursorManager: ObservableObject {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         emojiLayers.forEach { $0.opacity = hidden ? 0 : 1 }
-        CATransaction.commit()
-    }
-
-    // MARK: - Position
-
-    private func syncPosition(_ screen: NSPoint) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for i in overlayWindows.indices {
-            let origin = overlayWindows[i].frame.origin
-            emojiLayers[i].position = CGPoint(
-                x: screen.x - origin.x + offset.x,
-                y: screen.y - origin.y + offset.y
-            )
-        }
         CATransaction.commit()
     }
 
