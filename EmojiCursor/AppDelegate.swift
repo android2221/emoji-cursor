@@ -30,19 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             cursorManager.activate(emoji: lastEmoji)
         }
 
-        cursorManager.onStatusChange = { [weak self] emoji in
-            DispatchQueue.main.async {
-                guard let button = self?.statusItem?.button else { return }
-                if let emoji {
-                    button.title = emoji
-                    button.image = nil
-                } else {
-                    button.title = ""
-                    button.image = NSImage(systemSymbolName: "cursorarrow.rays",
-                                           accessibilityDescription: "Emoji Cursor")
-                }
-            }
-        }
+        cursorManager.onStatusChange = { _ in }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

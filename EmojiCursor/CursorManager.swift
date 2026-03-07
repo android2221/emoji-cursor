@@ -23,6 +23,7 @@ final class CursorManager: ObservableObject {
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var visibilityTimer: DispatchSourceTimer?
+    private var accessibilityTimer: DispatchSourceTimer?
     private var displayLink: CVDisplayLink?
 
     /// Where the emoji wants to be (cursor pos + offset), in screen coords.
@@ -95,16 +96,31 @@ final class CursorManager: ObservableObject {
     func requestAccessibilityPermission() {
         let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
         AXIsProcessTrustedWithOptions(opts)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.recheckAccessibility()
-        }
+        startAccessibilityPolling()
     }
 
     func recheckAccessibility() {
         let trusted = AXIsProcessTrusted()
         guard hasAccessibility != trusted else { return }
         hasAccessibility = trusted
+        if trusted { stopAccessibilityPolling() }
         if isActive { stopTracking(); startTracking() }
+    }
+
+    private func startAccessibilityPolling() {
+        guard accessibilityTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 1, repeating: .seconds(2))
+        timer.setEventHandler { [weak self] in
+            self?.recheckAccessibility()
+        }
+        timer.resume()
+        accessibilityTimer = timer
+    }
+
+    private func stopAccessibilityPolling() {
+        accessibilityTimer?.cancel()
+        accessibilityTimer = nil
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {

@@ -19,6 +19,9 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if !cursorManager.hasAccessibility {
+                accessibilityBanner
+            }
             Divider()
             ScrollView {
                 VStack(spacing: 16) {
@@ -36,6 +39,27 @@ struct ContentView: View {
     }
 
     // MARK: - Subviews
+
+    private var accessibilityBanner: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Accessibility (Optional)")
+                    .font(.caption).bold()
+                Text("Grant for smoother cursor tracking.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Grant") {
+                cursorManager.requestAccessibilityPermission()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.1))
+    }
 
     private var header: some View {
         HStack {
@@ -85,6 +109,7 @@ struct ContentView: View {
                             Button {
                                 selectedEmoji = emoji
                                 customEmojiInput = ""
+                                cursorManager.activate(emoji: emoji)
                             } label: {
                                 Text(emoji)
                                     .font(.system(size: 22))
@@ -142,6 +167,7 @@ struct ContentView: View {
         .onChange(of: customEmojiInput) {
             if let first = customEmojiInput.first, first.isEmoji {
                 selectedEmoji = String(first)
+                cursorManager.activate(emoji: selectedEmoji)
             }
         }
     }
@@ -212,27 +238,6 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            if !cursorManager.hasAccessibility {
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Accessibility Required")
-                            .font(.caption).bold()
-                        Text("Needed to hide the emoji while typing and for smoother tracking in all apps.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                    Button("Grant") {
-                        cursorManager.requestAccessibilityPermission()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                }
-                .padding(8)
-                .background(Color.orange.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
         }
     }
 
