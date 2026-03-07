@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var selectedEmoji: String = UserDefaults.standard.string(forKey: "lastEmoji") ?? "😀"
     @State private var searchText: String = ""
     @State private var selectedCategory: String = EmojiData.categories[0].id
+    @State private var skinToneEmoji: String? = nil
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
@@ -147,36 +148,85 @@ struct ContentView: View {
                 ScrollView(.vertical) {
                     LazyVGrid(columns: columns, spacing: 2) {
                         ForEach(emojis, id: \.self) { emoji in
-                            Button {
-                                selectedEmoji = emoji
-                                cursorManager.activate(emoji: emoji)
-                            } label: {
-                                Text(emoji)
-                                    .font(.system(size: 24))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 34)
-                                    .background(
-                                        selectedEmoji == emoji
-                                        ? Color.accentColor.opacity(0.2)
-                                        : Color.clear
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5)
-                                            .strokeBorder(
-                                                selectedEmoji == emoji
-                                                ? Color.accentColor : Color.clear,
-                                                lineWidth: 1.5
-                                            )
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                            emojiButton(emoji)
                         }
                     }
                 }
                 .frame(height: 200)
             }
         }
+    }
+
+    // MARK: - Emoji Button with Skin Tone
+
+    private func selectEmoji(_ emoji: String) {
+        selectedEmoji = emoji
+        cursorManager.activate(emoji: emoji)
+    }
+
+    private func emojiButton(_ emoji: String) -> some View {
+        let hasSkinTones = EmojiSkinTone.supportsSkinTone(emoji)
+        let base = EmojiSkinTone.stripSkinTone(emoji)
+        let isSelected = selectedEmoji == emoji ||
+            (hasSkinTones && EmojiSkinTone.stripSkinTone(selectedEmoji) == base)
+
+        return Button {
+            if hasSkinTones {
+                skinToneEmoji = emoji
+            } else {
+                selectEmoji(emoji)
+            }
+        } label: {
+            Text(emoji)
+                .font(.system(size: 24))
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(
+                    isSelected
+                    ? Color.accentColor.opacity(0.2)
+                    : Color.clear
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(
+                            isSelected
+                            ? Color.accentColor : Color.clear,
+                            lineWidth: 1.5
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: Binding(
+            get: { skinToneEmoji == emoji },
+            set: { if !$0 { skinToneEmoji = nil } }
+        ), arrowEdge: .bottom) {
+            skinTonePopover(for: emoji)
+        }
+    }
+
+    private func skinTonePopover(for emoji: String) -> some View {
+        let variants = EmojiSkinTone.variants(for: emoji)
+        return HStack(spacing: 4) {
+            ForEach(variants, id: \.self) { variant in
+                Button {
+                    selectEmoji(variant)
+                    skinToneEmoji = nil
+                } label: {
+                    Text(variant)
+                        .font(.system(size: 28))
+                        .frame(width: 36, height: 36)
+                        .background(
+                            selectedEmoji == variant
+                            ? Color.accentColor.opacity(0.2)
+                            : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
     }
 
     @State private var settingsExpanded: Bool = false

@@ -6,6 +6,72 @@ struct EmojiCategory: Identifiable {
     let emojis: [String]
 }
 
+// MARK: - Skin Tone Support
+
+enum SkinTone: String, CaseIterable {
+    case light = "\u{1F3FB}"
+    case mediumLight = "\u{1F3FC}"
+    case medium = "\u{1F3FD}"
+    case mediumDark = "\u{1F3FE}"
+    case dark = "\u{1F3FF}"
+}
+
+enum EmojiSkinTone {
+    /// Check if an emoji supports skin tone modifiers by testing whether
+    /// appending a modifier actually changes its rendered form.
+    static func supportsSkinTone(_ emoji: String) -> Bool {
+        // Strip any existing skin tone modifier to get the base
+        let base = stripSkinTone(emoji)
+        // An emoji supports skin tones if it contains an Emoji_Modifier_Base scalar
+        return base.unicodeScalars.contains { scalar in
+            scalar.properties.isEmojiModifierBase
+        }
+    }
+
+    /// Return the base emoji without any skin tone modifier.
+    static func stripSkinTone(_ emoji: String) -> String {
+        let skinToneScalars: Set<Unicode.Scalar> = [
+            Unicode.Scalar(0x1F3FB)!,
+            Unicode.Scalar(0x1F3FC)!,
+            Unicode.Scalar(0x1F3FD)!,
+            Unicode.Scalar(0x1F3FE)!,
+            Unicode.Scalar(0x1F3FF)!,
+        ]
+        var scalars = Array(emoji.unicodeScalars)
+        scalars.removeAll { skinToneScalars.contains($0) }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
+    /// Generate all skin tone variants for a base emoji (including the default yellow).
+    /// Returns: [base, light, mediumLight, medium, mediumDark, dark]
+    static func variants(for emoji: String) -> [String] {
+        let base = stripSkinTone(emoji)
+        guard supportsSkinTone(base) else { return [emoji] }
+
+        var results = [base]
+        for tone in SkinTone.allCases {
+            results.append(applyTone(tone, to: base))
+        }
+        return results
+    }
+
+    /// Apply a skin tone modifier to a base emoji.
+    /// Inserts the modifier after the first Emoji_Modifier_Base scalar.
+    private static func applyTone(_ tone: SkinTone, to base: String) -> String {
+        let modifier = tone.rawValue.unicodeScalars.first!
+        var scalars: [Unicode.Scalar] = []
+        var applied = false
+        for scalar in base.unicodeScalars {
+            scalars.append(scalar)
+            if !applied && scalar.properties.isEmojiModifierBase {
+                scalars.append(modifier)
+                applied = true
+            }
+        }
+        return String(String.UnicodeScalarView(scalars))
+    }
+}
+
 enum EmojiData {
     static let categories: [EmojiCategory] = [
         EmojiCategory(id: "smileys", icon: "😀", emojis: [
