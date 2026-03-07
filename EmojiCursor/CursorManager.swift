@@ -40,8 +40,16 @@ final class CursorManager: ObservableObject {
     private let offset = CGPoint(x: 3, y: -4)
 
     @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: "emojiSize") as? CGFloat ?? 28
+    @Published var springEnabled: Bool = UserDefaults.standard.object(forKey: "springEnabled") as? Bool ?? true
+    @Published var tailLength: Int = UserDefaults.standard.object(forKey: "tailLength") as? Int ?? 0
 
     private var emojiHidden = false
+
+    // Tail effect
+    private var tailLayers: [[CALayer]] = []  // [screenIndex][tailIndex]
+    private var positionHistory: [CGPoint] = []
+    private let maxTailSlots = 20
+    private let tailSpacing = 4  // sample every Nth frame for spacing
 
     private init() {}
 
@@ -141,11 +149,27 @@ final class CursorManager: ObservableObject {
             layer.shadowOffset = CGSize(width: 0.5, height: -1)
             layer.shadowRadius = 2
 
+            // Create tail layers (behind the main emoji)
+            var screenTailLayers: [CALayer] = []
+            for t in 0..<maxTailSlots {
+                let tailLayer = CALayer()
+                tailLayer.bounds = CGRect(origin: .zero, size: CGSize(width: emojiSize, height: emojiSize))
+                tailLayer.anchorPoint = CGPoint(x: 0, y: 1)
+                tailLayer.contentsGravity = .resizeAspect
+                tailLayer.contents = image
+                tailLayer.opacity = 0  // hidden until tail is enabled
+                let frac = Float(t + 1) / Float(maxTailSlots)
+                tailLayer.transform = CATransform3DMakeScale(CGFloat(1.0 - 0.4 * frac), CGFloat(1.0 - 0.4 * frac), 1)
+                view.layer?.addSublayer(tailLayer)
+                screenTailLayers.append(tailLayer)
+            }
+
             view.layer?.addSublayer(layer)
 
             window.orderFrontRegardless()
             overlayWindows.append(window)
             emojiLayers.append(layer)
+            tailLayers.append(screenTailLayers)
         }
 
         NotificationCenter.default.addObserver(
@@ -158,6 +182,7 @@ final class CursorManager: ObservableObject {
         overlayWindows.forEach { $0.orderOut(nil) }
         overlayWindows.removeAll()
         emojiLayers.removeAll()
+        tailLayers.removeAll()
         NotificationCenter.default.removeObserver(
             self, name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
@@ -175,12 +200,40 @@ final class CursorManager: ObservableObject {
             layer.bounds = bounds
             layer.contents = image
         }
+        for screenLayers in tailLayers {
+            for (t, layer) in screenLayers.enumerated() {
+                layer.bounds = bounds
+                layer.contents = image
+                let frac = Float(t + 1) / Float(maxTailSlots)
+                layer.transform = CATransform3DMakeScale(CGFloat(1.0 - 0.4 * frac), CGFloat(1.0 - 0.4 * frac), 1)
+            }
+        }
     }
 
     func updateSize(_ size: CGFloat) {
         emojiSize = size
         UserDefaults.standard.set(size, forKey: "emojiSize")
         if isActive { updateEmojiImage() }
+    }
+
+    func setSpringEnabled(_ enabled: Bool) {
+        springEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "springEnabled")
+    }
+
+    func setTailLength(_ length: Int) {
+        tailLength = length
+        UserDefaults.standard.set(length, forKey: "tailLength")
+        if length == 0 {
+            positionHistory.removeAll()
+            // Hide all tail layers
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for screenLayers in tailLayers {
+                for layer in screenLayers { layer.opacity = 0 }
+            }
+            CATransaction.commit()
+        }
     }
 
     // MARK: - Mouse tracking
@@ -279,28 +332,40 @@ final class CursorManager: ObservableObject {
     private func stepSpring() {
         guard isActive, !emojiHidden else { return }
 
-        // Spring force: pull currentPosition toward targetPosition
-        let dx = targetPosition.x - currentPosition.x
-        let dy = targetPosition.y - currentPosition.y
+        if springEnabled {
+            // Spring force: pull currentPosition toward targetPosition
+            let dx = targetPosition.x - currentPosition.x
+            let dy = targetPosition.y - currentPosition.y
 
-        // If close enough and barely moving, snap to avoid endless micro-updates
-        let dist = sqrt(dx * dx + dy * dy)
-        let speed = sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
-        if dist < 0.3 && speed < 0.3 {
-            if currentPosition.x != targetPosition.x || currentPosition.y != targetPosition.y {
-                currentPosition = targetPosition
-                velocity = .zero
-                updateLayerPositions()
+            // If close enough and barely moving, snap to avoid endless micro-updates
+            let dist = sqrt(dx * dx + dy * dy)
+            let speed = sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
+            if dist < 0.3 && speed < 0.3 {
+                if currentPosition.x != targetPosition.x || currentPosition.y != targetPosition.y {
+                    currentPosition = targetPosition
+                    velocity = .zero
+                }
+            } else {
+                velocity.x += dx * springStiffness
+                velocity.y += dy * springStiffness
+                velocity.x *= springDamping
+                velocity.y *= springDamping
+                currentPosition.x += velocity.x
+                currentPosition.y += velocity.y
             }
-            return
+        } else {
+            currentPosition = targetPosition
+            velocity = .zero
         }
 
-        velocity.x += dx * springStiffness
-        velocity.y += dy * springStiffness
-        velocity.x *= springDamping
-        velocity.y *= springDamping
-        currentPosition.x += velocity.x
-        currentPosition.y += velocity.y
+        // Record position history for tail
+        if tailLength > 0 {
+            positionHistory.insert(currentPosition, at: 0)
+            let needed = tailLength * tailSpacing + 1
+            if positionHistory.count > needed {
+                positionHistory.removeSubrange(needed...)
+            }
+        }
 
         updateLayerPositions()
     }
@@ -314,6 +379,24 @@ final class CursorManager: ObservableObject {
                 x: currentPosition.x - origin.x,
                 y: currentPosition.y - origin.y
             )
+
+            // Update tail layers
+            guard i < tailLayers.count else { continue }
+            for t in 0..<maxTailSlots {
+                let layer = tailLayers[i][t]
+                if t < tailLength {
+                    let histIdx = (t + 1) * tailSpacing
+                    if histIdx < positionHistory.count {
+                        let pos = positionHistory[histIdx]
+                        layer.position = CGPoint(x: pos.x - origin.x, y: pos.y - origin.y)
+                        layer.opacity = Float(tailLength - t) / Float(tailLength + 1) * 0.6
+                    } else {
+                        layer.opacity = 0
+                    }
+                } else {
+                    layer.opacity = 0
+                }
+            }
         }
         CATransaction.commit()
     }
@@ -362,6 +445,12 @@ final class CursorManager: ObservableObject {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         emojiLayers.forEach { $0.opacity = hidden ? 0 : 1 }
+        if hidden {
+            for screenLayers in tailLayers {
+                for layer in screenLayers { layer.opacity = 0 }
+            }
+            positionHistory.removeAll()
+        }
         CATransaction.commit()
     }
 

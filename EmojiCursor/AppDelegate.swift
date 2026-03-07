@@ -25,6 +25,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.popover = popover
 
+        // Auto-activate with last used emoji on launch
+        if let lastEmoji = UserDefaults.standard.string(forKey: "lastEmoji") {
+            cursorManager.activate(emoji: lastEmoji)
+        }
+
         cursorManager.onStatusChange = { [weak self] emoji in
             DispatchQueue.main.async {
                 guard let button = self?.statusItem?.button else { return }

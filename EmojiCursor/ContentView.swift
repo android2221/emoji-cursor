@@ -24,6 +24,7 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                     previewSection
                     sizeSection
+                    effectsSection
                     quickPickSection
                     customPickSection
                     settingsSection
@@ -88,6 +89,36 @@ struct ContentView: View {
                 ), in: 16...64, step: 2)
                 Text("🔷")
                     .font(.system(size: 18))
+            }
+        }
+    }
+
+    private var effectsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Effects")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Toggle("Spring physics", isOn: Binding(
+                get: { cursorManager.springEnabled },
+                set: { cursorManager.setSpringEnabled($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Tail length")
+                        .font(.caption2)
+                    Spacer()
+                    Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(
+                    get: { Double(cursorManager.tailLength) },
+                    set: { cursorManager.setTailLength(Int($0)) }
+                ), in: 0...15, step: 1)
             }
         }
     }
