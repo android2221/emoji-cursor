@@ -26,7 +26,7 @@ struct ContentView: View {
                 .padding(.top, 8)
             settingsSection
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
             Divider()
             actionBar
         }
@@ -236,76 +236,73 @@ struct ContentView: View {
         .padding(6)
     }
 
-    @State private var settingsExpanded: Bool = false
-
     private var settingsSection: some View {
-        DisclosureGroup(isExpanded: $settingsExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Size")
-                        .font(.system(size: 13))
-                    Slider(value: Binding(
-                        get: { cursorManager.emojiSize },
-                        set: { cursorManager.updateSize($0) }
-                    ), in: 16...64, step: 2)
-                    .controlSize(.regular)
-                    .padding(.horizontal, 8)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Tail length")
-                            .font(.system(size: 13))
-                        Spacer()
-                        Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: Binding(
-                        get: { Double(cursorManager.tailLength) },
-                        set: { cursorManager.setTailLength(Int($0)) }
-                    ), in: 0...15, step: 1)
-                    .controlSize(.regular)
-                    .padding(.horizontal, 8)
-                }
-
-                Toggle(isOn: Binding(
-                    get: { cursorManager.springEnabled },
-                    set: { cursorManager.setSpringEnabled($0) }
-                )) {
-                    Text("Spring physics")
-                        .font(.system(size: 13))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-                Toggle(isOn: Binding(
-                    get: { cursorManager.aliveMotion },
-                    set: { cursorManager.setAliveMotion($0) }
-                )) {
-                    Text("Alive motion")
-                        .font(.system(size: 13))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-                Toggle(isOn: Binding(
-                    get: { cursorManager.launchAtLogin },
-                    set: { cursorManager.setLaunchAtLogin($0) }
-                )) {
-                    Text("Launch at login")
-                        .font(.system(size: 13))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-            }
-            .padding(.top, 6)
-        } label: {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Settings")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Size")
+                    .font(.system(size: 13))
+                Slider(value: Binding(
+                    get: { cursorManager.emojiSize },
+                    set: { cursorManager.updateSize($0) }
+                ), in: 16...64, step: 2)
+                .controlSize(.regular)
+                .padding(.horizontal, 8)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Tail length")
+                        .font(.system(size: 13))
+                    Spacer()
+                    Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(value: Binding(
+                    get: { Double(cursorManager.tailLength) },
+                    set: { cursorManager.setTailLength(Int($0)) }
+                ), in: 0...15, step: 1)
+                .controlSize(.regular)
+                .padding(.horizontal, 8)
+            }
+
+            Toggle(isOn: Binding(
+                get: { cursorManager.springEnabled },
+                set: { cursorManager.setSpringEnabled($0) }
+            )) {
+                Text("Spring physics")
+                    .font(.system(size: 13))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            Toggle(isOn: Binding(
+                get: { cursorManager.aliveMotion },
+                set: { cursorManager.setAliveMotion($0) }
+            )) {
+                Text("Alive motion")
+                    .font(.system(size: 13))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            Toggle(isOn: Binding(
+                get: { cursorManager.launchAtLogin },
+                set: { cursorManager.setLaunchAtLogin($0) }
+            )) {
+                Text("Launch at login")
+                    .font(.system(size: 13))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
         }
     }
 
