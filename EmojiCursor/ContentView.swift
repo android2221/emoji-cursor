@@ -248,7 +248,26 @@ struct ContentView: View {
                         get: { cursorManager.emojiSize },
                         set: { cursorManager.updateSize($0) }
                     ), in: 16...64, step: 2)
-                    .controlSize(.small)
+                    .controlSize(.regular)
+                    .padding(.horizontal, 8)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Tail length")
+                            .font(.system(size: 13))
+                        Spacer()
+                        Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    Slider(value: Binding(
+                        get: { Double(cursorManager.tailLength) },
+                        set: { cursorManager.setTailLength(Int($0)) }
+                    ), in: 0...15, step: 1)
+                    .controlSize(.regular)
+                    .padding(.horizontal, 8)
                 }
 
                 Toggle(isOn: Binding(
@@ -272,23 +291,6 @@ struct ContentView: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Tail length")
-                            .font(.system(size: 13))
-                        Spacer()
-                        Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: Binding(
-                        get: { Double(cursorManager.tailLength) },
-                        set: { cursorManager.setTailLength(Int($0)) }
-                    ), in: 0...15, step: 1)
-                    .controlSize(.small)
-                }
 
                 Toggle(isOn: Binding(
                     get: { cursorManager.launchAtLogin },
