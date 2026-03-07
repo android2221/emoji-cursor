@@ -23,8 +23,6 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     previewSection
-                    sizeSection
-                    effectsSection
                     quickPickSection
                     customPickSection
                     settingsSection
@@ -70,55 +68,6 @@ struct ContentView: View {
                     .frame(height: 80)
                 Text(selectedEmoji)
                     .font(.system(size: 48))
-            }
-        }
-    }
-
-    private var sizeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Size")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                Text("🔹")
-                    .font(.system(size: 10))
-                Slider(value: Binding(
-                    get: { cursorManager.emojiSize },
-                    set: { cursorManager.updateSize($0) }
-                ), in: 16...64, step: 2)
-                Text("🔷")
-                    .font(.system(size: 18))
-            }
-        }
-    }
-
-    private var effectsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Effects")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Toggle("Spring physics", isOn: Binding(
-                get: { cursorManager.springEnabled },
-                set: { cursorManager.setSpringEnabled($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Tail length")
-                        .font(.caption2)
-                    Spacer()
-                    Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Slider(value: Binding(
-                    get: { Double(cursorManager.tailLength) },
-                    set: { cursorManager.setTailLength(Int($0)) }
-                ), in: 0...15, step: 1)
             }
         }
     }
@@ -198,11 +147,56 @@ struct ContentView: View {
     }
 
     private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Settings")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            // Size
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Size")
+                    .font(.caption2)
+                HStack(spacing: 8) {
+                    Text("🔹")
+                        .font(.system(size: 10))
+                    Slider(value: Binding(
+                        get: { cursorManager.emojiSize },
+                        set: { cursorManager.updateSize($0) }
+                    ), in: 16...64, step: 2)
+                    Text("🔷")
+                        .font(.system(size: 18))
+                }
+            }
+
+            Divider()
+
+            // Spring physics
+            Toggle("Spring physics", isOn: Binding(
+                get: { cursorManager.springEnabled },
+                set: { cursorManager.setSpringEnabled($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            // Tail
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Tail length")
+                        .font(.caption2)
+                    Spacer()
+                    Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(
+                    get: { Double(cursorManager.tailLength) },
+                    set: { cursorManager.setTailLength(Int($0)) }
+                ), in: 0...15, step: 1)
+            }
+
+            Divider()
+
+            // Launch at login
             Toggle("Launch at login", isOn: Binding(
                 get: { cursorManager.launchAtLogin },
                 set: { cursorManager.setLaunchAtLogin($0) }
