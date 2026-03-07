@@ -116,24 +116,31 @@ struct ContentView: View {
 
             // Category tab bar (hidden during search)
             if searchText.isEmpty {
-                HStack(spacing: 0) {
-                    ForEach(EmojiData.categories) { category in
-                        Button {
-                            selectedCategory = category.id
-                        } label: {
-                            Text(category.icon)
-                                .font(.system(size: 16))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 26)
-                                .background(
-                                    selectedCategory == category.id
-                                    ? Color.accentColor.opacity(0.2)
-                                    : Color.clear
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        ForEach(EmojiData.categories) { category in
+                            Button {
+                                selectedCategory = category.id
+                            } label: {
+                                Text(category.icon)
+                                    .font(.system(size: 14))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 24)
+                                    .background(
+                                        selectedCategory == category.id
+                                        ? Color.accentColor.opacity(0.2)
+                                        : Color.clear
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
+                    Divider()
+                        .padding(.top, 6)
                 }
             }
 
