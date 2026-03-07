@@ -42,8 +42,10 @@ final class CursorManager: ObservableObject {
     @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: "emojiSize") as? CGFloat ?? 28
     @Published var springEnabled: Bool = UserDefaults.standard.object(forKey: "springEnabled") as? Bool ?? true
     @Published var tailLength: Int = UserDefaults.standard.object(forKey: "tailLength") as? Int ?? 0
+    @Published var aliveMotion: Bool = UserDefaults.standard.object(forKey: "aliveMotion") as? Bool ?? false
 
     private var emojiHidden = false
+    private var aliveTime: Double = 0
 
     // Tail effect
     private var tailLayers: [[CALayer]] = []  // [screenIndex][tailIndex]
@@ -221,6 +223,20 @@ final class CursorManager: ObservableObject {
         UserDefaults.standard.set(enabled, forKey: "springEnabled")
     }
 
+    func setAliveMotion(_ enabled: Bool) {
+        aliveMotion = enabled
+        UserDefaults.standard.set(enabled, forKey: "aliveMotion")
+        if !enabled {
+            // Reset transforms to identity
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for layer in emojiLayers {
+                layer.transform = CATransform3DIdentity
+            }
+            CATransaction.commit()
+        }
+    }
+
     func setTailLength(_ length: Int) {
         tailLength = length
         UserDefaults.standard.set(length, forKey: "tailLength")
@@ -358,6 +374,11 @@ final class CursorManager: ObservableObject {
             velocity = .zero
         }
 
+        // Advance alive animation timer (~60fps → 1/60s per tick)
+        if aliveMotion {
+            aliveTime += 1.0 / 60.0
+        }
+
         // Record position history for tail
         if tailLength > 0 {
             positionHistory.insert(currentPosition, at: 0)
@@ -379,6 +400,18 @@ final class CursorManager: ObservableObject {
                 x: currentPosition.x - origin.x,
                 y: currentPosition.y - origin.y
             )
+
+            // Alive motion: gentle bob + breathe
+            if aliveMotion {
+                let bobY = CGFloat(sin(aliveTime * 2.5)) * 2.0       // slow vertical bob
+                let breathe = 1.0 + CGFloat(sin(aliveTime * 3.0)) * 0.04  // subtle scale pulse
+                let tilt = CGFloat(sin(aliveTime * 1.8)) * 0.06      // very gentle sway
+                var t = CATransform3DIdentity
+                t = CATransform3DTranslate(t, 0, bobY, 0)
+                t = CATransform3DScale(t, breathe, breathe, 1)
+                t = CATransform3DRotate(t, tilt, 0, 0, 1)
+                emojiLayers[i].transform = t
+            }
 
             // Update tail layers
             guard i < tailLayers.count else { continue }

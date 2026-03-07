@@ -178,6 +178,14 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
+            // Alive motion
+            Toggle("Alive motion", isOn: Binding(
+                get: { cursorManager.aliveMotion },
+                set: { cursorManager.setAliveMotion($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
             // Tail
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
