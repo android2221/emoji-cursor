@@ -1,14 +1,18 @@
 import AppKit
 import ApplicationServices
+import ServiceManagement
 
 /// Floats an emoji decoration next to the system cursor. The real pointer
 /// stays visible — the emoji just rides along as a charm / gem.
+/// Hides automatically in lock-step with the system cursor by polling
+/// its actual visibility state.
 final class CursorManager: ObservableObject {
     static let shared = CursorManager()
 
     @Published private(set) var isActive = false
     @Published private(set) var currentEmoji = UserDefaults.standard.string(forKey: "lastEmoji") ?? "😀"
     @Published private(set) var hasAccessibility = AXIsProcessTrusted()
+    @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var onStatusChange: ((String?) -> Void)?
 
@@ -20,10 +24,13 @@ final class CursorManager: ObservableObject {
     private var tapSource: CFRunLoopSource?
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var visibilityTimer: DispatchSourceTimer?
 
     /// Offset from cursor tip so the emoji sits just below-right of the arrow.
     private let offset = CGPoint(x: 5, y: -6)
     @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: "emojiSize") as? CGFloat ?? 32
+
+    private var emojiHidden = false
 
     private init() {}
 
@@ -43,6 +50,7 @@ final class CursorManager: ObservableObject {
         onStatusChange?(emoji)
         setupOverlays()
         startTracking()
+        startVisibilityPolling()
         syncPosition(NSEvent.mouseLocation)
     }
 
@@ -51,6 +59,7 @@ final class CursorManager: ObservableObject {
         isActive = false
         onStatusChange?(nil)
         stopTracking()
+        stopVisibilityPolling()
         tearDownOverlays()
     }
 
@@ -67,6 +76,19 @@ final class CursorManager: ObservableObject {
         guard hasAccessibility != trusted else { return }
         hasAccessibility = trusted
         if isActive { stopTracking(); startTracking() }
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLogin = enabled
+        } catch {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
     }
 
     // MARK: - Overlays
@@ -90,7 +112,7 @@ final class CursorManager: ObservableObject {
 
             let layer = CALayer()
             layer.bounds = CGRect(origin: .zero, size: CGSize(width: emojiSize, height: emojiSize))
-            layer.anchorPoint = CGPoint(x: 0, y: 1) // position = top-left of emoji
+            layer.anchorPoint = CGPoint(x: 0, y: 1)
             layer.contentsGravity = .resizeAspect
             layer.contents = image
             view.layer?.addSublayer(layer)
@@ -135,11 +157,11 @@ final class CursorManager: ObservableObject {
         if isActive { updateEmojiImage() }
     }
 
-    // MARK: - Tracking
+    // MARK: - Mouse tracking
 
     private func startTracking() {
-        if hasAccessibility, installEventTap() { return }
-        installNSEventMonitors()
+        if hasAccessibility, installEventTap() {}
+        else { installNSEventMonitors() }
     }
 
     private func stopTracking() {
@@ -147,19 +169,21 @@ final class CursorManager: ObservableObject {
             CGEvent.tapEnable(tap: tap, enable: false)
             if let src = tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
         }
-        eventTap = nil; tapSource = nil 
+        eventTap = nil; tapSource = nil
 
         if let m = globalMonitor { NSEvent.removeMonitor(m) }
         if let m = localMonitor  { NSEvent.removeMonitor(m) }
         globalMonitor = nil; localMonitor = nil
+
+        setEmojiHidden(false)
     }
 
     private func installEventTap() -> Bool {
-        let mask: CGEventMask =
-            (1 << CGEventType.mouseMoved.rawValue) |
-            (1 << CGEventType.leftMouseDragged.rawValue) |
-            (1 << CGEventType.rightMouseDragged.rawValue) |
-            (1 << CGEventType.otherMouseDragged.rawValue)
+        var mask: CGEventMask = 0
+        for t: CGEventType in [.mouseMoved, .leftMouseDragged,
+                                .rightMouseDragged, .otherMouseDragged] {
+            mask |= (1 << t.rawValue)
+        }
 
         let ptr = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
@@ -191,6 +215,59 @@ final class CursorManager: ObservableObject {
             self?.syncPosition(NSEvent.mouseLocation)
             return event
         }
+    }
+
+    // MARK: - Cursor visibility polling
+
+    /// Resolve the actual CGCursorIsVisible function at runtime.
+    /// The symbol exists in the CoreGraphics dylib but the macOS 15 SDK
+    /// header marks it unavailable, so we load it dynamically.
+    /// Falls back to trying _CGSDefaultConnection + CGSCursorIsVisible(conn).
+    private static let queryCursorVisible: (() -> Bool)? = {
+        let cg = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+        guard let handle = dlopen(cg, RTLD_LAZY) else { return nil }
+
+        // Try 1: CGCursorIsVisible() — public but deprecated/unavailable in SDK
+        if let sym = dlsym(handle, "CGCursorIsVisible") {
+            let fn = unsafeBitCast(sym, to: (@convention(c) () -> Int32).self)
+            return { fn() != 0 }
+        }
+
+        // Try 2: _CGSDefaultConnection() + CGSCursorIsVisible(conn)
+        if let connSym = dlsym(handle, "_CGSDefaultConnection"),
+           let visSym = dlsym(handle, "CGSCursorIsVisible") {
+            let connFn = unsafeBitCast(connSym, to: (@convention(c) () -> Int32).self)
+            let visFn = unsafeBitCast(visSym, to: (@convention(c) (Int32) -> Int32).self)
+            return { visFn(connFn()) != 0 }
+        }
+
+        return nil
+    }()
+
+    private func startVisibilityPolling() {
+        guard let isVisible = Self.queryCursorVisible else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(50))
+        timer.setEventHandler { [weak self] in
+            self?.setEmojiHidden(!isVisible())
+        }
+        timer.resume()
+        visibilityTimer = timer
+    }
+
+    private func stopVisibilityPolling() {
+        visibilityTimer?.cancel()
+        visibilityTimer = nil
+    }
+
+    private func setEmojiHidden(_ hidden: Bool) {
+        guard emojiHidden != hidden else { return }
+        emojiHidden = hidden
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        emojiLayers.forEach { $0.opacity = hidden ? 0 : 1 }
+        CATransaction.commit()
     }
 
     // MARK: - Position

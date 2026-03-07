@@ -26,6 +26,7 @@ struct ContentView: View {
                     sizeSection
                     quickPickSection
                     customPickSection
+                    settingsSection
                 }
                 .padding(16)
             }
@@ -158,10 +159,46 @@ struct ContentView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .onChange(of: customEmojiInput) { newValue in
-            if let first = newValue.first, first.isEmoji {
-                // Auto-apply as soon as a valid emoji is typed/pasted
+        .onChange(of: customEmojiInput) {
+            if let first = customEmojiInput.first, first.isEmoji {
                 selectedEmoji = String(first)
+            }
+        }
+    }
+
+    private var settingsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Settings")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Toggle("Launch at login", isOn: Binding(
+                get: { cursorManager.launchAtLogin },
+                set: { cursorManager.setLaunchAtLogin($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            if !cursorManager.hasAccessibility {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Accessibility Required")
+                            .font(.caption).bold()
+                        Text("Needed to hide the emoji while typing and for smoother tracking in all apps.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button("Grant") {
+                        cursorManager.requestAccessibilityPermission()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }
     }
@@ -233,7 +270,7 @@ struct EmojiTextField: NSViewRepresentable {
             guard let field = obj.object as? NSTextField else { return }
             let raw = field.stringValue
             // Keep only the first emoji character
-            if let first = raw.unicodeScalars.first,
+            if let _ = raw.unicodeScalars.first,
                raw.first?.isEmoji == true {
                 let emoji = String(raw.prefix(raw.first!.utf16.count))
                 parent.text = emoji
