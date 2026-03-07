@@ -95,7 +95,7 @@ struct ContentView: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.tertiary)
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                 TextField("Search emojis…", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -105,7 +105,7 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.tertiary)
-                            .font(.system(size: 11))
+                            .font(.system(size: 13))
                     }
                     .buttonStyle(.plain)
                 }
@@ -240,72 +240,70 @@ struct ContentView: View {
 
     private var settingsSection: some View {
         DisclosureGroup(isExpanded: $settingsExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                // Size
+            VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Size")
-                        .font(.caption2)
-                    HStack(spacing: 8) {
-                        Text("🔹")
-                            .font(.system(size: 10))
-                        Slider(value: Binding(
-                            get: { cursorManager.emojiSize },
-                            set: { cursorManager.updateSize($0) }
-                        ), in: 16...64, step: 2)
-                        Text("🔷")
-                            .font(.system(size: 18))
-                    }
+                        .font(.system(size: 13))
+                    Slider(value: Binding(
+                        get: { cursorManager.emojiSize },
+                        set: { cursorManager.updateSize($0) }
+                    ), in: 16...64, step: 2)
+                    .controlSize(.small)
                 }
 
-                Divider()
-
-                // Spring physics
-                Toggle("Spring physics", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { cursorManager.springEnabled },
                     set: { cursorManager.setSpringEnabled($0) }
-                ))
+                )) {
+                    Text("Spring physics")
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
-                // Alive motion
-                Toggle("Alive motion", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { cursorManager.aliveMotion },
                     set: { cursorManager.setAliveMotion($0) }
-                ))
+                )) {
+                    Text("Alive motion")
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
-                // Tail
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("Tail length")
-                            .font(.caption2)
+                            .font(.system(size: 13))
                         Spacer()
                         Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
-                            .font(.caption2)
+                            .font(.system(size: 13))
                             .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                     Slider(value: Binding(
                         get: { Double(cursorManager.tailLength) },
                         set: { cursorManager.setTailLength(Int($0)) }
                     ), in: 0...15, step: 1)
+                    .controlSize(.small)
                 }
 
-                Divider()
-
-                // Launch at login
-                Toggle("Launch at login", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { cursorManager.launchAtLogin },
                     set: { cursorManager.setLaunchAtLogin($0) }
-                ))
+                )) {
+                    Text("Launch at login")
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 .toggleStyle(.switch)
                 .controlSize(.small)
             }
-            .padding(.top, 4)
+            .padding(.top, 6)
         } label: {
             Text("Settings")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
