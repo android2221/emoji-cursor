@@ -311,22 +311,23 @@ struct ContentView: View {
             Text(selectedEmoji)
                 .font(.system(size: 28))
 
+            Spacer()
+
             if cursorManager.isActive {
-                Button("Reset") {
+                Button("Clear Emoji") {
                     cursorManager.deactivate()
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.regular)
+                .keyboardShortcut(.return, modifiers: [])
+            } else {
+                Button("Activate Emoji") {
+                    cursorManager.activate(emoji: selectedEmoji)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .keyboardShortcut(.return, modifiers: [])
             }
-
-            Spacer()
-
-            Button(cursorManager.isActive ? "Update" : "Set Cursor") {
-                cursorManager.activate(emoji: selectedEmoji)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .keyboardShortcut(.return, modifiers: [])
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
