@@ -6,15 +6,10 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject private var cursorManager: CursorManager
     @State private var selectedEmoji: String = UserDefaults.standard.string(forKey: "lastEmoji") ?? "😀"
-    @State private var customEmojiInput: String = ""
-    @FocusState private var emojiFieldFocused: Bool
+    @State private var searchText: String = ""
+    @State private var selectedCategory: String = EmojiData.categories[0].id
 
-    private let quickPicks: [[String]] = [
-        ["😀", "😂", "😍", "🥳", "😎", "🤩"],
-        ["❤️", "🔥", "⭐", "✨", "🎉", "💎"],
-        ["🚀", "🌈", "🦄", "🐱", "🍕", "👾"],
-        ["👋", "👆", "✌️", "🤙", "👌", "🫵"],
-    ]
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,15 +18,14 @@ struct ContentView: View {
                 accessibilityBanner
             }
             Divider()
-            ScrollView {
-                VStack(spacing: 16) {
-                    previewSection
-                    quickPickSection
-                    customPickSection
-                    settingsSection
-                }
-                .padding(16)
-            }
+            emojiBrowserSection
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            Divider()
+                .padding(.top, 8)
+            settingsSection
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             Divider()
             actionBar
         }
@@ -79,49 +73,96 @@ struct ContentView: View {
         .padding(.vertical, 10)
     }
 
-    private var previewSection: some View {
-        VStack(spacing: 8) {
-            Text("Selected Emoji")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    // MARK: - Emoji Browser
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.background.secondary)
-                    .frame(height: 80)
-                Text(selectedEmoji)
-                    .font(.system(size: 48))
+    private var currentEmojis: [String] {
+        let query = searchText.lowercased().trimmingCharacters(in: .whitespaces)
+        if query.isEmpty {
+            return EmojiData.categories.first(where: { $0.id == selectedCategory })?.emojis ?? []
+        }
+        return EmojiData.categories.flatMap { $0.emojis }.filter { emoji in
+            emoji.unicodeScalars.contains { scalar in
+                let name = scalar.properties.name?.lowercased() ?? ""
+                return name.contains(query)
             }
         }
     }
 
-    private var quickPickSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Quick Pick")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private var emojiBrowserSection: some View {
+        VStack(spacing: 6) {
+            // Search field
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 11))
+                TextField("Search emojis…", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
 
-            VStack(spacing: 4) {
-                ForEach(quickPicks.indices, id: \.self) { row in
-                    HStack(spacing: 4) {
-                        ForEach(quickPicks[row], id: \.self) { emoji in
+            // Category tab bar (hidden during search)
+            if searchText.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(EmojiData.categories) { category in
+                        Button {
+                            selectedCategory = category.id
+                        } label: {
+                            Text(category.icon)
+                                .font(.system(size: 16))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 26)
+                                .background(
+                                    selectedCategory == category.id
+                                    ? Color.accentColor.opacity(0.2)
+                                    : Color.clear
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // Emoji grid
+            let emojis = currentEmojis
+            if emojis.isEmpty {
+                Text("No emojis found")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
+            } else {
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: columns, spacing: 2) {
+                        ForEach(emojis, id: \.self) { emoji in
                             Button {
                                 selectedEmoji = emoji
-                                customEmojiInput = ""
                                 cursorManager.activate(emoji: emoji)
                             } label: {
                                 Text(emoji)
-                                    .font(.system(size: 22))
-                                    .frame(width: 40, height: 36)
+                                    .font(.system(size: 24))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 34)
                                     .background(
                                         selectedEmoji == emoji
-                                        ? Color.accentColor.opacity(0.25)
+                                        ? Color.accentColor.opacity(0.2)
                                         : Color.clear
                                     )
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
+                                        RoundedRectangle(cornerRadius: 5)
                                             .strokeBorder(
                                                 selectedEmoji == emoji
                                                 ? Color.accentColor : Color.clear,
@@ -133,122 +174,95 @@ struct ContentView: View {
                         }
                     }
                 }
+                .frame(height: 200)
             }
         }
     }
 
-    private var customPickSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Custom Emoji")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                // Text field — tap here then press ⌃⌘Space for the system picker
-                EmojiTextField(text: $customEmojiInput, onCommit: applyCustomEmoji)
-                    .frame(height: 32)
-                    .focused($emojiFieldFocused)
-
-                Button("Pick…") {
-                    emojiFieldFocused = true
-                    // Open the system emoji & symbol picker
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        NSApp.orderFrontCharacterPalette(nil)
-                    }
-                }
-                .buttonStyle(.bordered)
-            }
-
-            Text("Tip: focus the field and press ⌃⌘Space for the emoji picker")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .onChange(of: customEmojiInput) {
-            if let first = customEmojiInput.first, first.isEmoji {
-                selectedEmoji = String(first)
-                cursorManager.activate(emoji: selectedEmoji)
-            }
-        }
-    }
+    @State private var settingsExpanded: Bool = false
 
     private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        DisclosureGroup(isExpanded: $settingsExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Size
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Size")
+                        .font(.caption2)
+                    HStack(spacing: 8) {
+                        Text("🔹")
+                            .font(.system(size: 10))
+                        Slider(value: Binding(
+                            get: { cursorManager.emojiSize },
+                            set: { cursorManager.updateSize($0) }
+                        ), in: 16...64, step: 2)
+                        Text("🔷")
+                            .font(.system(size: 18))
+                    }
+                }
+
+                Divider()
+
+                // Spring physics
+                Toggle("Spring physics", isOn: Binding(
+                    get: { cursorManager.springEnabled },
+                    set: { cursorManager.setSpringEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+                // Alive motion
+                Toggle("Alive motion", isOn: Binding(
+                    get: { cursorManager.aliveMotion },
+                    set: { cursorManager.setAliveMotion($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+                // Tail
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Tail length")
+                            .font(.caption2)
+                        Spacer()
+                        Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: Binding(
+                        get: { Double(cursorManager.tailLength) },
+                        set: { cursorManager.setTailLength(Int($0)) }
+                    ), in: 0...15, step: 1)
+                }
+
+                Divider()
+
+                // Launch at login
+                Toggle("Launch at login", isOn: Binding(
+                    get: { cursorManager.launchAtLogin },
+                    set: { cursorManager.setLaunchAtLogin($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+            .padding(.top, 4)
+        } label: {
             Text("Settings")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            // Size
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Size")
-                    .font(.caption2)
-                HStack(spacing: 8) {
-                    Text("🔹")
-                        .font(.system(size: 10))
-                    Slider(value: Binding(
-                        get: { cursorManager.emojiSize },
-                        set: { cursorManager.updateSize($0) }
-                    ), in: 16...64, step: 2)
-                    Text("🔷")
-                        .font(.system(size: 18))
-                }
-            }
-
-            Divider()
-
-            // Spring physics
-            Toggle("Spring physics", isOn: Binding(
-                get: { cursorManager.springEnabled },
-                set: { cursorManager.setSpringEnabled($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            // Alive motion
-            Toggle("Alive motion", isOn: Binding(
-                get: { cursorManager.aliveMotion },
-                set: { cursorManager.setAliveMotion($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            // Tail
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Tail length")
-                        .font(.caption2)
-                    Spacer()
-                    Text(cursorManager.tailLength == 0 ? "Off" : "\(cursorManager.tailLength)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Slider(value: Binding(
-                    get: { Double(cursorManager.tailLength) },
-                    set: { cursorManager.setTailLength(Int($0)) }
-                ), in: 0...15, step: 1)
-            }
-
-            Divider()
-
-            // Launch at login
-            Toggle("Launch at login", isOn: Binding(
-                get: { cursorManager.launchAtLogin },
-                set: { cursorManager.setLaunchAtLogin($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
         }
     }
 
     private var actionBar: some View {
         HStack(spacing: 8) {
+            Text(selectedEmoji)
+                .font(.system(size: 28))
+
             if cursorManager.isActive {
-                Button("Reset to Default") {
+                Button("Reset") {
                     cursorManager.deactivate()
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .controlSize(.small)
             }
 
             Spacer()
@@ -261,73 +275,7 @@ struct ContentView: View {
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: - Helpers
-
-    private func applyCustomEmoji() {
-        guard let first = customEmojiInput.first, first.isEmoji else { return }
-        selectedEmoji = String(first)
-    }
-}
-
-// MARK: - EmojiTextField (NSViewRepresentable)
-
-/// A thin AppKit wrapper so the system emoji popover (⌃⌘Space) can be invoked.
-struct EmojiTextField: NSViewRepresentable {
-    @Binding var text: String
-    var onCommit: () -> Void
-
-    func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField()
-        field.delegate = context.coordinator
-        field.placeholderString = "Paste or type emoji…"
-        field.alignment = .center
-        field.font = .systemFont(ofSize: 20)
-        field.isBezeled = true
-        field.bezelStyle = .roundedBezel
-        field.focusRingType = .default
-        return field
-    }
-
-    func updateNSView(_ nsView: NSTextField, context: Context) {
-        if nsView.stringValue != text {
-            nsView.stringValue = text
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    class Coordinator: NSObject, NSTextFieldDelegate {
-        var parent: EmojiTextField
-
-        init(_ parent: EmojiTextField) { self.parent = parent }
-
-        func controlTextDidChange(_ obj: Notification) {
-            guard let field = obj.object as? NSTextField else { return }
-            let raw = field.stringValue
-            // Keep only the first emoji character
-            if let _ = raw.unicodeScalars.first,
-               raw.first?.isEmoji == true {
-                let emoji = String(raw.prefix(raw.first!.utf16.count))
-                parent.text = emoji
-                if field.stringValue != emoji {
-                    field.stringValue = emoji
-                }
-            } else {
-                parent.text = raw
-            }
-        }
-
-        func control(_ control: NSControl, textView: NSTextView,
-                     doCommandBy selector: Selector) -> Bool {
-            if selector == #selector(NSResponder.insertNewline(_:)) {
-                parent.onCommit()
-                return true
-            }
-            return false
-        }
+        .padding(.vertical, 8)
     }
 }
 

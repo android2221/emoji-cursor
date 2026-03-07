@@ -12,6 +12,7 @@
 		AABBCC00000000000000000D /* CursorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000006 /* CursorManager.swift */; };
 		AABBCC00000000000000000E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000007 /* ContentView.swift */; };
 		AABBCC00000000000000000F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000009 /* Assets.xcassets */; };
+		AABBCC000000000000000020 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000021 /* EmojiData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +23,7 @@
 		AABBCC000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AABBCC000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AABBCC00000000000000000A /* EmojiCursor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EmojiCursor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AABBCC000000000000000021 /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +52,7 @@
 				AABBCC000000000000000005 /* AppDelegate.swift */,
 				AABBCC000000000000000006 /* CursorManager.swift */,
 				AABBCC000000000000000007 /* ContentView.swift */,
+				AABBCC000000000000000021 /* EmojiData.swift */,
 				AABBCC000000000000000009 /* Assets.xcassets */,
 				AABBCC000000000000000008 /* Info.plist */,
 			);
@@ -137,6 +140,7 @@
 				AABBCC00000000000000000C /* AppDelegate.swift in Sources */,
 				AABBCC00000000000000000D /* CursorManager.swift in Sources */,
 				AABBCC00000000000000000E /* ContentView.swift in Sources */,
+				AABBCC000000000000000020 /* EmojiData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
