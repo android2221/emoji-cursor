@@ -157,7 +157,7 @@ struct ContentView: View {
             } else {
                 ScrollView(.vertical) {
                     LazyVGrid(columns: columns, spacing: 2) {
-                        ForEach(emojis, id: \.self) { emoji in
+                        ForEach(Array(emojis.enumerated()), id: \.offset) { _, emoji in
                             emojiButton(emoji)
                         }
                     }
