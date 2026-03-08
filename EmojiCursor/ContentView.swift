@@ -82,7 +82,10 @@ struct ContentView: View {
             return EmojiData.categories.first(where: { $0.id == selectedCategory })?.emojis ?? []
         }
         return EmojiData.categories.flatMap { $0.emojis }.filter { emoji in
-            emoji.unicodeScalars.contains { scalar in
+            // Check keyword aliases first
+            if EmojiKeywords.matches(emoji, query: query) { return true }
+            // Fall back to Unicode scalar names
+            return emoji.unicodeScalars.contains { scalar in
                 let name = scalar.properties.name?.lowercased() ?? ""
                 return name.contains(query)
             }
