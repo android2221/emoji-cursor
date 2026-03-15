@@ -44,9 +44,12 @@ final class CursorManager: ObservableObject {
     @Published var springEnabled: Bool = UserDefaults.standard.object(forKey: "springEnabled") as? Bool ?? true
     @Published var tailLength: Int = UserDefaults.standard.object(forKey: "tailLength") as? Int ?? 0
     @Published var aliveMotion: Bool = UserDefaults.standard.object(forKey: "aliveMotion") as? Bool ?? false
+    @Published var jiggleOnClick: Bool = UserDefaults.standard.object(forKey: "jiggleOnClick") as? Bool ?? true
 
     private var emojiHidden = false
     private var aliveTime: Double = 0
+    private var jiggleTime: Double = 0
+    private let jiggleDuration: Double = 0.4
 
     // Tail effect
     private var tailLayers: [[CALayer]] = []  // [screenIndex][tailIndex]
@@ -253,6 +256,11 @@ final class CursorManager: ObservableObject {
         }
     }
 
+    func setJiggleOnClick(_ enabled: Bool) {
+        jiggleOnClick = enabled
+        UserDefaults.standard.set(enabled, forKey: "jiggleOnClick")
+    }
+
     func setTailLength(_ length: Int) {
         tailLength = length
         UserDefaults.standard.set(length, forKey: "tailLength")
@@ -284,7 +292,8 @@ final class CursorManager: ObservableObject {
 
         if let m = globalMonitor { NSEvent.removeMonitor(m) }
         if let m = localMonitor  { NSEvent.removeMonitor(m) }
-        globalMonitor = nil; localMonitor = nil
+        if let m = clickMonitor  { NSEvent.removeMonitor(m) }
+        globalMonitor = nil; localMonitor = nil; clickMonitor = nil
 
         setEmojiHidden(false)
     }
@@ -292,7 +301,8 @@ final class CursorManager: ObservableObject {
     private func installEventTap() -> Bool {
         var mask: CGEventMask = 0
         for t: CGEventType in [.mouseMoved, .leftMouseDragged,
-                                .rightMouseDragged, .otherMouseDragged] {
+                                .rightMouseDragged, .otherMouseDragged,
+                                .leftMouseDown, .rightMouseDown] {
             mask |= (1 << t.rawValue)
         }
 
@@ -300,12 +310,16 @@ final class CursorManager: ObservableObject {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap,
             options: .listenOnly, eventsOfInterest: mask,
-            callback: { _, _, event, info -> Unmanaged<CGEvent>? in
+            callback: { _, type, event, info -> Unmanaged<CGEvent>? in
                 guard let info else { return Unmanaged.passRetained(event) }
                 let mgr = Unmanaged<CursorManager>.fromOpaque(info).takeUnretainedValue()
-                let cg = event.location
-                let h = NSScreen.screens.first?.frame.height ?? 0
-                mgr.setTarget(NSPoint(x: cg.x, y: h - cg.y))
+                if type == .leftMouseDown || type == .rightMouseDown {
+                    DispatchQueue.main.async { mgr.triggerJiggle() }
+                } else {
+                    let cg = event.location
+                    let h = NSScreen.screens.first?.frame.height ?? 0
+                    mgr.setTarget(NSPoint(x: cg.x, y: h - cg.y))
+                }
                 return Unmanaged.passRetained(event)
             }, userInfo: ptr
         ) else { return false }
@@ -317,6 +331,8 @@ final class CursorManager: ObservableObject {
         return true
     }
 
+    private var clickMonitor: Any?
+
     private func installNSEventMonitors() {
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
@@ -326,6 +342,15 @@ final class CursorManager: ObservableObject {
             self?.setTarget(NSEvent.mouseLocation)
             return event
         }
+        let clickMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: clickMask) { [weak self] _ in
+            self?.triggerJiggle()
+        }
+    }
+
+    private func triggerJiggle() {
+        guard jiggleOnClick else { return }
+        jiggleTime = jiggleDuration
     }
 
     /// Called on every mouse event — just updates the target, the display
@@ -395,6 +420,12 @@ final class CursorManager: ObservableObject {
             aliveTime += 1.0 / 60.0
         }
 
+        // Tick jiggle timer
+        if jiggleTime > 0 {
+            jiggleTime -= 1.0 / 60.0
+            if jiggleTime < 0 { jiggleTime = 0 }
+        }
+
         // Record position history for tail
         if tailLength > 0 {
             positionHistory.insert(currentPosition, at: 0)
@@ -417,17 +448,30 @@ final class CursorManager: ObservableObject {
                 y: currentPosition.y - origin.y
             )
 
-            // Alive motion: gentle bob + breathe
+            // Build transform from alive motion + jiggle
+            var t = CATransform3DIdentity
+
             if aliveMotion {
-                let bobY = CGFloat(sin(aliveTime * 2.5)) * 2.0       // slow vertical bob
-                let breathe = 1.0 + CGFloat(sin(aliveTime * 3.0)) * 0.04  // subtle scale pulse
-                let tilt = CGFloat(sin(aliveTime * 1.8)) * 0.06      // very gentle sway
-                var t = CATransform3DIdentity
+                let bobY = CGFloat(sin(aliveTime * 2.5)) * 2.0
+                let breathe = 1.0 + CGFloat(sin(aliveTime * 3.0)) * 0.04
+                let tilt = CGFloat(sin(aliveTime * 1.8)) * 0.06
                 t = CATransform3DTranslate(t, 0, bobY, 0)
                 t = CATransform3DScale(t, breathe, breathe, 1)
                 t = CATransform3DRotate(t, tilt, 0, 0, 1)
-                emojiLayers[i].transform = t
             }
+
+            if jiggleTime > 0 {
+                let progress = jiggleTime / jiggleDuration
+                let decay = progress * progress  // quadratic decay
+                let angle = CGFloat(sin(jiggleTime * 40)) * 0.3 * decay
+                let bounce = CGFloat(sin(jiggleTime * 25)) * 4.0 * decay
+                let squash = 1.0 + CGFloat(sin(jiggleTime * 30)) * 0.15 * decay
+                t = CATransform3DTranslate(t, 0, bounce, 0)
+                t = CATransform3DRotate(t, angle, 0, 0, 1)
+                t = CATransform3DScale(t, 2.0 - squash, squash, 1)
+            }
+
+            emojiLayers[i].transform = t
 
             // Update tail layers
             guard i < tailLayers.count else { continue }

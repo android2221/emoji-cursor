@@ -297,6 +297,17 @@ struct ContentView: View {
             .controlSize(.small)
 
             Toggle(isOn: Binding(
+                get: { cursorManager.jiggleOnClick },
+                set: { cursorManager.setJiggleOnClick($0) }
+            )) {
+                Text("Jiggle on click")
+                    .font(.system(size: 13))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            Toggle(isOn: Binding(
                 get: { cursorManager.launchAtLogin },
                 set: { cursorManager.setLaunchAtLogin($0) }
             )) {
