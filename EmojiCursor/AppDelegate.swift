@@ -26,11 +26,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.popover = popover
 
         // Auto-activate with last used emoji on launch
-        if let lastEmoji = UserDefaults.standard.string(forKey: "lastEmoji") {
-            cursorManager.activate(emoji: lastEmoji)
-        }
+        cursorManager.activate(emoji: cursorManager.currentEmoji)
 
-        cursorManager.onStatusChange = { _ in }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

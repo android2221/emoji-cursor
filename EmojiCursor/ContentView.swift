@@ -5,7 +5,6 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject private var cursorManager: CursorManager
-    @State private var selectedEmoji: String = UserDefaults.standard.string(forKey: "lastEmoji") ?? "😀"
     @State private var searchText: String = ""
     @State private var selectedCategory: String = EmojiData.categories[0].id
     @State private var skinToneEmoji: String? = nil
@@ -170,15 +169,14 @@ struct ContentView: View {
     // MARK: - Emoji Button with Skin Tone
 
     private func selectEmoji(_ emoji: String) {
-        selectedEmoji = emoji
-        cursorManager.activate(emoji: emoji)
+        cursorManager.selectEmoji(emoji)
     }
 
     private func emojiButton(_ emoji: String) -> some View {
         let hasSkinTones = EmojiSkinTone.supportsSkinTone(emoji)
         let base = EmojiSkinTone.stripSkinTone(emoji)
-        let isSelected = selectedEmoji == emoji ||
-            (hasSkinTones && EmojiSkinTone.stripSkinTone(selectedEmoji) == base)
+        let isSelected = cursorManager.currentEmoji == emoji ||
+            (hasSkinTones && EmojiSkinTone.stripSkinTone(cursorManager.currentEmoji) == base)
 
         return Button {
             if hasSkinTones {
@@ -227,7 +225,7 @@ struct ContentView: View {
                         .font(.system(size: 28))
                         .frame(width: 36, height: 36)
                         .background(
-                            selectedEmoji == variant
+                            cursorManager.currentEmoji == variant
                             ? Color.accentColor.opacity(0.2)
                             : Color.clear
                         )
@@ -274,10 +272,7 @@ struct ContentView: View {
                 .padding(.horizontal, 8)
             }
 
-            Toggle(isOn: Binding(
-                get: { cursorManager.springEnabled },
-                set: { cursorManager.setSpringEnabled($0) }
-            )) {
+            Toggle(isOn: $cursorManager.springEnabled) {
                 Text("Spring physics")
                     .font(.system(size: 13))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,10 +291,7 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            Toggle(isOn: Binding(
-                get: { cursorManager.jiggleOnClick },
-                set: { cursorManager.setJiggleOnClick($0) }
-            )) {
+            Toggle(isOn: $cursorManager.jiggleOnClick) {
                 Text("Jiggle on click")
                     .font(.system(size: 13))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -322,7 +314,7 @@ struct ContentView: View {
 
     private var actionBar: some View {
         HStack(spacing: 8) {
-            Text(selectedEmoji)
+            Text(cursorManager.currentEmoji)
                 .font(.system(size: 28))
 
             Spacer()
@@ -336,7 +328,7 @@ struct ContentView: View {
                 .keyboardShortcut(.return, modifiers: [])
             } else {
                 Button("Activate Emoji") {
-                    cursorManager.activate(emoji: selectedEmoji)
+                    cursorManager.activate(emoji: cursorManager.currentEmoji)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
@@ -345,32 +337,5 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Character.isEmoji helper
-
-private extension Character {
-    var isEmoji: Bool {
-        unicodeScalars.contains { scalar in
-            switch scalar.value {
-            case 0x1F600...0x1F64F, // Emoticons
-                 0x1F300...0x1F5FF, // Misc Symbols & Pictographs
-                 0x1F680...0x1F6FF, // Transport & Map
-                 0x1F700...0x1F77F, // Alchemical
-                 0x1F780...0x1F7FF, // Geometric Shapes Extended
-                 0x1F800...0x1F8FF, // Supplemental Arrows-C
-                 0x1F900...0x1F9FF, // Supplemental Symbols & Pictographs
-                 0x1FA00...0x1FA6F, // Chess Symbols
-                 0x1FA70...0x1FAFF, // Symbols and Pictographs Extended-A
-                 0x2600...0x26FF,   // Misc symbols
-                 0x2700...0x27BF,   // Dingbats
-                 0xFE00...0xFE0F,   // Variation Selectors
-                 0x1F1E0...0x1F1FF: // Flags
-                return true
-            default:
-                return false
-            }
-        }
     }
 }

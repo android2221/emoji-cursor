@@ -2,17 +2,127 @@ import AppKit
 import ApplicationServices
 import ServiceManagement
 
+struct AnimationState {
+    var aliveTime: Double = 0
+    var jiggleTime: Double = 0
+
+    private enum AliveParams {
+        static let bobFrequency: Double = 2.5
+        static let bobAmplitude: CGFloat = 2.0
+        static let breatheFrequency: Double = 3.0
+        static let breatheAmplitude: CGFloat = 0.04
+        static let tiltFrequency: Double = 1.8
+        static let tiltAmplitude: CGFloat = 0.06
+    }
+
+    private enum JiggleParams {
+        static let duration: Double = 0.4
+        static let rotationFrequency: Double = 40
+        static let rotationAmplitude: CGFloat = 0.3
+        static let bounceFrequency: Double = 25
+        static let bounceAmplitude: CGFloat = 4.0
+        static let squashFrequency: Double = 30
+        static let squashAmplitude: CGFloat = 0.15
+    }
+
+    mutating func tick(dt: Double, aliveEnabled: Bool) {
+        if aliveEnabled {
+            aliveTime += dt
+        }
+        if jiggleTime > 0 {
+            jiggleTime -= dt
+            if jiggleTime < 0 { jiggleTime = 0 }
+        }
+    }
+
+    mutating func triggerJiggle() {
+        jiggleTime = JiggleParams.duration
+    }
+
+    func computeTransform(aliveEnabled: Bool) -> CATransform3D {
+        var t = CATransform3DIdentity
+
+        if aliveEnabled {
+            let bobY = CGFloat(sin(aliveTime * AliveParams.bobFrequency)) * AliveParams.bobAmplitude
+            let breathe = 1.0 + CGFloat(sin(aliveTime * AliveParams.breatheFrequency)) * AliveParams.breatheAmplitude
+            let tilt = CGFloat(sin(aliveTime * AliveParams.tiltFrequency)) * AliveParams.tiltAmplitude
+            t = CATransform3DTranslate(t, 0, bobY, 0)
+            t = CATransform3DScale(t, breathe, breathe, 1)
+            t = CATransform3DRotate(t, tilt, 0, 0, 1)
+        }
+
+        if jiggleTime > 0 {
+            let progress = jiggleTime / JiggleParams.duration
+            let decay = progress * progress
+            let angle = CGFloat(sin(jiggleTime * JiggleParams.rotationFrequency)) * JiggleParams.rotationAmplitude * decay
+            let bounce = CGFloat(sin(jiggleTime * JiggleParams.bounceFrequency)) * JiggleParams.bounceAmplitude * decay
+            let squash = 1.0 + CGFloat(sin(jiggleTime * JiggleParams.squashFrequency)) * JiggleParams.squashAmplitude * decay
+            t = CATransform3DTranslate(t, 0, bounce, 0)
+            t = CATransform3DRotate(t, angle, 0, 0, 1)
+            t = CATransform3DScale(t, 2.0 - squash, squash, 1)
+        }
+
+        return t
+    }
+}
+
+struct SpringPhysics {
+    var target: CGPoint = .zero
+    var current: CGPoint = .zero
+    var velocity: CGPoint = .zero
+    var stiffness: CGFloat = 0.35
+    var damping: CGFloat = 0.75
+
+    /// Advance the spring one frame. Returns true if position changed.
+    @discardableResult
+    mutating func step(dt: CGFloat) -> Bool {
+        let steps = dt * 60.0
+        let dx = target.x - current.x
+        let dy = target.y - current.y
+
+        let dist = sqrt(dx * dx + dy * dy)
+        let speed = sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
+        if dist < 0.3 && speed < 0.3 {
+            guard current != target else { return false }
+            current = target
+            velocity = .zero
+            return true
+        }
+
+        velocity.x += dx * stiffness * steps
+        velocity.y += dy * stiffness * steps
+        velocity.x *= pow(damping, steps)
+        velocity.y *= pow(damping, steps)
+        current.x += velocity.x * steps
+        current.y += velocity.y * steps
+        return true
+    }
+
+    mutating func snap(to point: CGPoint) {
+        target = point
+        current = point
+        velocity = .zero
+    }
+}
+
 /// Floats an emoji charm next to the system cursor with springy physics.
 /// Hides in lock-step with the system cursor by polling CGCursorIsVisible.
 final class CursorManager: ObservableObject {
     static let shared = CursorManager()
 
+    private enum DefaultsKey {
+        static let lastEmoji = "lastEmoji"
+        static let emojiSize = "emojiSize"
+        static let springEnabled = "springEnabled"
+        static let tailLength = "tailLength"
+        static let aliveMotion = "aliveMotion"
+        static let jiggleOnClick = "jiggleOnClick"
+    }
+
     @Published private(set) var isActive = false
-    @Published private(set) var currentEmoji = UserDefaults.standard.string(forKey: "lastEmoji") ?? "😀"
+    @Published var currentEmoji = UserDefaults.standard.string(forKey: DefaultsKey.lastEmoji) ?? "😀"
     @Published private(set) var hasAccessibility = AXIsProcessTrusted()
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
-
-    var onStatusChange: ((String?) -> Void)?
 
     private var overlayWindows: [NSWindow] = []
     private var emojiLayers: [CALayer] = []
@@ -22,34 +132,29 @@ final class CursorManager: ObservableObject {
     private var tapSource: CFRunLoopSource?
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var clickMonitor: Any?
     private var visibilityTimer: DispatchSourceTimer?
     private var accessibilityTimer: DispatchSourceTimer?
     private var displayLink: CVDisplayLink?
+    private var lastFrameTime: Double = 0
 
-    /// Where the emoji wants to be (cursor pos + offset), in screen coords.
-    private var targetPosition: CGPoint = .zero
-    /// Where the emoji actually is right now (lags behind via spring).
-    private var currentPosition: CGPoint = .zero
-    /// Velocity for the spring simulation.
-    private var velocity: CGPoint = .zero
-
-    // Spring parameters
-    private let springStiffness: CGFloat = 0.35
-    private let springDamping: CGFloat = 0.75
+    private var spring = SpringPhysics()
 
     /// Offset from cursor tip — tuck it right against the arrow.
     private let offset = CGPoint(x: 3, y: -4)
 
-    @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: "emojiSize") as? CGFloat ?? 28
-    @Published var springEnabled: Bool = UserDefaults.standard.object(forKey: "springEnabled") as? Bool ?? true
-    @Published var tailLength: Int = UserDefaults.standard.object(forKey: "tailLength") as? Int ?? 0
-    @Published var aliveMotion: Bool = UserDefaults.standard.object(forKey: "aliveMotion") as? Bool ?? false
-    @Published var jiggleOnClick: Bool = UserDefaults.standard.object(forKey: "jiggleOnClick") as? Bool ?? true
+    @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: DefaultsKey.emojiSize) as? CGFloat ?? 28
+    @Published var springEnabled: Bool = UserDefaults.standard.bool(forKey: DefaultsKey.springEnabled) {
+        didSet { UserDefaults.standard.set(springEnabled, forKey: DefaultsKey.springEnabled) }
+    }
+    @Published var tailLength: Int = UserDefaults.standard.object(forKey: DefaultsKey.tailLength) as? Int ?? 0
+    @Published var aliveMotion: Bool = UserDefaults.standard.object(forKey: DefaultsKey.aliveMotion) as? Bool ?? false
+    @Published var jiggleOnClick: Bool = UserDefaults.standard.bool(forKey: DefaultsKey.jiggleOnClick) {
+        didSet { UserDefaults.standard.set(jiggleOnClick, forKey: DefaultsKey.jiggleOnClick) }
+    }
 
     private var emojiHidden = false
-    private var aliveTime: Double = 0
-    private var jiggleTime: Double = 0
-    private let jiggleDuration: Double = 0.4
+    private var animation = AnimationState()
 
     // Tail effect
     private var tailLayers: [[CALayer]] = []  // [screenIndex][tailIndex]
@@ -57,22 +162,33 @@ final class CursorManager: ObservableObject {
     private let maxTailSlots = 20
     private let tailSpacing = 4  // sample every Nth frame for spacing
 
-    private init() {}
+    private init() {
+        UserDefaults.standard.register(defaults: [
+            DefaultsKey.springEnabled: true,
+            DefaultsKey.jiggleOnClick: true,
+        ])
+    }
 
     // MARK: - Public
 
+    func selectEmoji(_ emoji: String) {
+        currentEmoji = emoji
+        UserDefaults.standard.set(emoji, forKey: DefaultsKey.lastEmoji)
+        if isActive {
+            updateEmojiImage()
+        }
+    }
+
     func activate(emoji: String) {
         currentEmoji = emoji
-        UserDefaults.standard.set(emoji, forKey: "lastEmoji")
+        UserDefaults.standard.set(emoji, forKey: DefaultsKey.lastEmoji)
 
         if isActive {
             updateEmojiImage()
-            onStatusChange?(emoji)
             return
         }
 
         isActive = true
-        onStatusChange?(emoji)
         setupOverlays()
         startTracking()
         startVisibilityPolling()
@@ -80,16 +196,13 @@ final class CursorManager: ObservableObject {
 
         // Snap to initial position (no spring lag on first show)
         let pos = NSEvent.mouseLocation
-        targetPosition = CGPoint(x: pos.x + offset.x, y: pos.y + offset.y)
-        currentPosition = targetPosition
-        velocity = .zero
+        spring.snap(to: CGPoint(x: pos.x + offset.x, y: pos.y + offset.y))
         updateLayerPositions()
     }
 
     func deactivate() {
         guard isActive else { return }
         isActive = false
-        onStatusChange?(nil)
         stopTracking()
         stopVisibilityPolling()
         stopDisplayLink()
@@ -233,18 +346,13 @@ final class CursorManager: ObservableObject {
 
     func updateSize(_ size: CGFloat) {
         emojiSize = size
-        UserDefaults.standard.set(size, forKey: "emojiSize")
+        UserDefaults.standard.set(size, forKey: DefaultsKey.emojiSize)
         if isActive { updateEmojiImage() }
-    }
-
-    func setSpringEnabled(_ enabled: Bool) {
-        springEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: "springEnabled")
     }
 
     func setAliveMotion(_ enabled: Bool) {
         aliveMotion = enabled
-        UserDefaults.standard.set(enabled, forKey: "aliveMotion")
+        UserDefaults.standard.set(enabled, forKey: DefaultsKey.aliveMotion)
         if !enabled {
             // Reset transforms to identity
             CATransaction.begin()
@@ -256,14 +364,9 @@ final class CursorManager: ObservableObject {
         }
     }
 
-    func setJiggleOnClick(_ enabled: Bool) {
-        jiggleOnClick = enabled
-        UserDefaults.standard.set(enabled, forKey: "jiggleOnClick")
-    }
-
     func setTailLength(_ length: Int) {
         tailLength = length
-        UserDefaults.standard.set(length, forKey: "tailLength")
+        UserDefaults.standard.set(length, forKey: DefaultsKey.tailLength)
         if length == 0 {
             positionHistory.removeAll()
             // Hide all tail layers
@@ -331,8 +434,6 @@ final class CursorManager: ObservableObject {
         return true
     }
 
-    private var clickMonitor: Any?
-
     private func installNSEventMonitors() {
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
@@ -350,13 +451,13 @@ final class CursorManager: ObservableObject {
 
     private func triggerJiggle() {
         guard jiggleOnClick else { return }
-        jiggleTime = jiggleDuration
+        animation.triggerJiggle()
     }
 
     /// Called on every mouse event — just updates the target, the display
     /// link handles the smooth interpolation.
     private func setTarget(_ mouse: NSPoint) {
-        targetPosition = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
+        spring.target = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
     }
 
     // MARK: - Display link (spring physics)
@@ -366,11 +467,16 @@ final class CursorManager: ObservableObject {
         CVDisplayLinkCreateWithActiveCGDisplays(&link)
         guard let link else { return }
 
+        lastFrameTime = CACurrentMediaTime()
         let ptr = Unmanaged.passUnretained(self).toOpaque()
-        CVDisplayLinkSetOutputCallback(link, { _, _, _, _, _, userInfo -> CVReturn in
+        CVDisplayLinkSetOutputCallback(link, { _, inNow, _, _, _, userInfo -> CVReturn in
             guard let userInfo else { return kCVReturnSuccess }
             let mgr = Unmanaged<CursorManager>.fromOpaque(userInfo).takeUnretainedValue()
-            DispatchQueue.main.async { mgr.stepSpring() }
+            let now = Double(inNow.pointee.videoTime) / Double(inNow.pointee.videoTimeScale)
+            let last = mgr.lastFrameTime
+            let dt = last > 0 ? min(now - last, 1.0 / 30.0) : 1.0 / 60.0
+            mgr.lastFrameTime = now
+            DispatchQueue.main.async { mgr.stepSpring(dt: dt) }
             return kCVReturnSuccess
         }, ptr)
 
@@ -386,49 +492,21 @@ final class CursorManager: ObservableObject {
     }
 
     /// Advance the spring simulation one tick and update layers.
-    private func stepSpring() {
+    private func stepSpring(dt: Double) {
         guard isActive, !emojiHidden else { return }
 
         if springEnabled {
-            // Spring force: pull currentPosition toward targetPosition
-            let dx = targetPosition.x - currentPosition.x
-            let dy = targetPosition.y - currentPosition.y
-
-            // If close enough and barely moving, snap to avoid endless micro-updates
-            let dist = sqrt(dx * dx + dy * dy)
-            let speed = sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
-            if dist < 0.3 && speed < 0.3 {
-                if currentPosition.x != targetPosition.x || currentPosition.y != targetPosition.y {
-                    currentPosition = targetPosition
-                    velocity = .zero
-                }
-            } else {
-                velocity.x += dx * springStiffness
-                velocity.y += dy * springStiffness
-                velocity.x *= springDamping
-                velocity.y *= springDamping
-                currentPosition.x += velocity.x
-                currentPosition.y += velocity.y
-            }
+            spring.step(dt: CGFloat(dt))
         } else {
-            currentPosition = targetPosition
-            velocity = .zero
+            spring.current = spring.target
+            spring.velocity = .zero
         }
 
-        // Advance alive animation timer (~60fps → 1/60s per tick)
-        if aliveMotion {
-            aliveTime += 1.0 / 60.0
-        }
-
-        // Tick jiggle timer
-        if jiggleTime > 0 {
-            jiggleTime -= 1.0 / 60.0
-            if jiggleTime < 0 { jiggleTime = 0 }
-        }
+        animation.tick(dt: dt, aliveEnabled: aliveMotion)
 
         // Record position history for tail
         if tailLength > 0 {
-            positionHistory.insert(currentPosition, at: 0)
+            positionHistory.insert(spring.current, at: 0)
             let needed = tailLength * tailSpacing + 1
             if positionHistory.count > needed {
                 positionHistory.removeSubrange(needed...)
@@ -444,34 +522,11 @@ final class CursorManager: ObservableObject {
         for i in overlayWindows.indices {
             let origin = overlayWindows[i].frame.origin
             emojiLayers[i].position = CGPoint(
-                x: currentPosition.x - origin.x,
-                y: currentPosition.y - origin.y
+                x: spring.current.x - origin.x,
+                y: spring.current.y - origin.y
             )
 
-            // Build transform from alive motion + jiggle
-            var t = CATransform3DIdentity
-
-            if aliveMotion {
-                let bobY = CGFloat(sin(aliveTime * 2.5)) * 2.0
-                let breathe = 1.0 + CGFloat(sin(aliveTime * 3.0)) * 0.04
-                let tilt = CGFloat(sin(aliveTime * 1.8)) * 0.06
-                t = CATransform3DTranslate(t, 0, bobY, 0)
-                t = CATransform3DScale(t, breathe, breathe, 1)
-                t = CATransform3DRotate(t, tilt, 0, 0, 1)
-            }
-
-            if jiggleTime > 0 {
-                let progress = jiggleTime / jiggleDuration
-                let decay = progress * progress  // quadratic decay
-                let angle = CGFloat(sin(jiggleTime * 40)) * 0.3 * decay
-                let bounce = CGFloat(sin(jiggleTime * 25)) * 4.0 * decay
-                let squash = 1.0 + CGFloat(sin(jiggleTime * 30)) * 0.15 * decay
-                t = CATransform3DTranslate(t, 0, bounce, 0)
-                t = CATransform3DRotate(t, angle, 0, 0, 1)
-                t = CATransform3DScale(t, 2.0 - squash, squash, 1)
-            }
-
-            emojiLayers[i].transform = t
+            emojiLayers[i].transform = animation.computeTransform(aliveEnabled: aliveMotion)
 
             // Update tail layers
             guard i < tailLayers.count else { continue }
@@ -551,15 +606,15 @@ final class CursorManager: ObservableObject {
 
     private func makeEmojiImage() -> CGImage? {
         let sz = NSSize(width: emojiSize, height: emojiSize)
-        let img = NSImage(size: sz)
-        img.lockFocus()
-        let str = NSAttributedString(string: currentEmoji, attributes: [
-            .font: NSFont.systemFont(ofSize: emojiSize * 0.85)
-        ])
-        let strSz = str.size()
-        str.draw(at: NSPoint(x: (sz.width - strSz.width) / 2,
-                             y: (sz.height - strSz.height) / 2))
-        img.unlockFocus()
+        let img = NSImage(size: sz, flipped: false) { rect in
+            let str = NSAttributedString(string: self.currentEmoji, attributes: [
+                .font: NSFont.systemFont(ofSize: self.emojiSize * 0.85)
+            ])
+            let strSz = str.size()
+            str.draw(at: NSPoint(x: (rect.width - strSz.width) / 2,
+                                 y: (rect.height - strSz.height) / 2))
+            return true
+        }
         return img.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 }

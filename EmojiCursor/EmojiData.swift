@@ -232,15 +232,22 @@ enum EmojiKeywords {
 
 // MARK: - Skin Tone Support
 
-enum SkinTone: String, CaseIterable {
-    case light = "\u{1F3FB}"
-    case mediumLight = "\u{1F3FC}"
-    case medium = "\u{1F3FD}"
-    case mediumDark = "\u{1F3FE}"
-    case dark = "\u{1F3FF}"
-}
-
 enum EmojiSkinTone {
+    enum SkinTone: String, CaseIterable {
+        case light = "\u{1F3FB}"
+        case mediumLight = "\u{1F3FC}"
+        case medium = "\u{1F3FD}"
+        case mediumDark = "\u{1F3FE}"
+        case dark = "\u{1F3FF}"
+    }
+
+    private static let skinToneScalars: Set<Unicode.Scalar> = [
+        Unicode.Scalar(0x1F3FB)!,
+        Unicode.Scalar(0x1F3FC)!,
+        Unicode.Scalar(0x1F3FD)!,
+        Unicode.Scalar(0x1F3FE)!,
+        Unicode.Scalar(0x1F3FF)!,
+    ]
     /// Check if an emoji supports skin tone modifiers by testing whether
     /// appending a modifier actually changes its rendered form.
     static func supportsSkinTone(_ emoji: String) -> Bool {
@@ -254,13 +261,6 @@ enum EmojiSkinTone {
 
     /// Return the base emoji without any skin tone modifier.
     static func stripSkinTone(_ emoji: String) -> String {
-        let skinToneScalars: Set<Unicode.Scalar> = [
-            Unicode.Scalar(0x1F3FB)!,
-            Unicode.Scalar(0x1F3FC)!,
-            Unicode.Scalar(0x1F3FD)!,
-            Unicode.Scalar(0x1F3FE)!,
-            Unicode.Scalar(0x1F3FF)!,
-        ]
         var scalars = Array(emoji.unicodeScalars)
         scalars.removeAll { skinToneScalars.contains($0) }
         return String(String.UnicodeScalarView(scalars))
