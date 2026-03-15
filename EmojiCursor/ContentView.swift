@@ -30,6 +30,9 @@ struct ContentView: View {
             actionBar
         }
         .frame(width: 300)
+        .onReceive(NotificationCenter.default.publisher(for: .popoverDidShow)) { _ in
+            searchText = ""
+        }
     }
 
     // MARK: - Subviews

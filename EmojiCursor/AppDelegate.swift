@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let popoverDidShow = Notification.Name("popoverDidShow")
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
@@ -41,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            NotificationCenter.default.post(name: .popoverDidShow, object: nil)
         }
     }
 }
