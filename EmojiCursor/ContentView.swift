@@ -60,7 +60,7 @@ struct ContentView: View {
 
     private var header: some View {
         HStack {
-            Image(systemName: "cursorarrow.rays")
+            Image(systemName: "face.smiling")
                 .foregroundStyle(.secondary)
             Text("Emoji Cursor")
                 .font(.headline)
