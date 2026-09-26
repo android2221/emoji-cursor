@@ -18,5 +18,9 @@ cask "emojicursor" do
 
   uninstall quit: "com.emojicursor.app"
 
-  zap trash: "~/Library/Preferences/com.emojicursor.app.plist"
+  zap trash: [
+    "~/Library/Caches/com.emojicursor.app",
+    "~/Library/Preferences/com.emojicursor.app.plist",
+    "~/Library/Saved Application State/com.emojicursor.app.savedState",
+  ]
 end

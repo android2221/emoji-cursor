@@ -18,14 +18,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # full history for the build number
 
       - name: Extract version from tag
         id: version
         run: |
-          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag must look like v1.2.3"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Run tests
@@ -62,6 +64,10 @@ jobs:
             -k "$KEYCHAIN_PATH"
           rm "$CERT_PATH"
 
+          # Make sure the Developer ID intermediate is available to build the chain.
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN_PATH" || true
+
           # Add keychain to search list
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -73,6 +79,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --keychain "$RUNNER_TEMP/signing.keychain-db" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD"
@@ -99,6 +106,7 @@ jobs:
           ditto -c -k --keepParent "build/export/$APP_NAME.app" "build/$APP_NAME-notarize.zip"
           xcrun notarytool submit "build/$APP_NAME-notarize.zip" \
             --keychain-profile "$NOTARY_PROFILE" \
+            --keychain "$RUNNER_TEMP/signing.keychain-db" \
             --wait
           rm "build/$APP_NAME-notarize.zip"
           xcrun stapler staple "build/export/$APP_NAME.app"
@@ -110,6 +118,9 @@ jobs:
           ICON="build/export/$APP_NAME.app/Contents/Resources/AppIcon.icns"
           ICON_ARGS=()
           [ -f "$ICON" ] && ICON_ARGS=(--volicon "$ICON")
+          # create-dmg packages the *contents* of a folder, so stage the app in one.
+          mkdir -p build/dmg
+          ditto "build/export/$APP_NAME.app" "build/dmg/$APP_NAME.app"
           # create-dmg can exit non-zero on cosmetic issues; check the output instead.
           create-dmg \
             --volname "$APP_NAME" \
@@ -120,15 +131,18 @@ jobs:
             --icon "$APP_NAME.app" 150 190 \
             --hide-extension "$APP_NAME.app" \
             --app-drop-link 450 190 \
+            --skip-jenkins \
             "$DMG" \
-            "build/export/$APP_NAME.app" \
+            build/dmg \
             || true
           test -f "$DMG"
+          codesign --sign "Developer ID Application" --timestamp "$DMG"
 
       - name: Notarize DMG
         run: |
           xcrun notarytool submit "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg" \
             --keychain-profile "$NOTARY_PROFILE" \
+            --keychain "$RUNNER_TEMP/signing.keychain-db" \
             --wait
           xcrun stapler staple "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg"
 
@@ -182,8 +196,12 @@ jobs:
           ./scripts/update-cask.sh "$VERSION" "$ZIP_SHA"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Update Homebrew cask to $VERSION"
-          git push origin "HEAD:$DEFAULT_BRANCH"
+          if git diff --quiet; then
+            echo "Cask already at $VERSION"
+          else
+            git commit -am "Update Homebrew cask to $VERSION"
+            git push origin "HEAD:$DEFAULT_BRANCH"
+          fi
 
       - name: Cleanup keychain
         if: always()

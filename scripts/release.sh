@@ -14,7 +14,8 @@ APP_NAME="EmojiCursor"
 NOTARY_PROFILE="EmojiCursor-notary"
 
 # Get version from argument or git tag
-VERSION="${1:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")}"
+VERSION="${1:-$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")}"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "error: version must look like 1.2.3 (got '$VERSION')" >&2; exit 1; }
 # Build number must increase with every release; the commit count does.
 BUILD_NUMBER="$(git -C "$PROJECT_DIR" rev-list --count HEAD)"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
@@ -36,7 +37,7 @@ xcodebuild archive \
     -archivePath "$ARCHIVE_PATH" \
     MARKETING_VERSION="$VERSION" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-    | tail -5
+    -quiet
 
 echo "Archive created at $ARCHIVE_PATH"
 
@@ -47,7 +48,7 @@ xcodebuild -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_DIR" \
     -exportOptionsPlist "$PROJECT_DIR/ExportOptions.plist" \
-    | tail -5
+    -quiet
 
 APP_PATH="$EXPORT_DIR/${APP_NAME}.app"
 echo "Exported to $APP_PATH"
@@ -80,6 +81,10 @@ echo "Verification passed!"
 echo ""
 echo "=== Step 6: Creating DMG ==="
 DMG_PATH="$BUILD_DIR/$DMG_NAME"
+# create-dmg packages the *contents* of a folder, so stage the app in one.
+DMG_STAGING="$BUILD_DIR/dmg"
+mkdir -p "$DMG_STAGING"
+ditto "$APP_PATH" "$DMG_STAGING/$APP_NAME.app"
 
 ICON_ARGS=()
 if [ -f "$APP_PATH/Contents/Resources/AppIcon.icns" ]; then
@@ -98,9 +103,10 @@ create-dmg \
     --hide-extension "$APP_NAME.app" \
     --app-drop-link 450 190 \
     "$DMG_PATH" \
-    "$APP_PATH" \
+    "$DMG_STAGING" \
     || true
 [ -f "$DMG_PATH" ] || { echo "error: create-dmg did not produce $DMG_PATH" >&2; exit 1; }
+codesign --sign "Developer ID Application" --timestamp "$DMG_PATH"
 
 # Step 7: Notarize DMG
 echo ""

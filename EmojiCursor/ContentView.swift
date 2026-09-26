@@ -48,6 +48,15 @@ struct ContentView: View {
                     .foregroundStyle(.green)
                     .labelStyle(.titleAndIcon)
             }
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                Image(systemName: "power")
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("q")
+            .help("Quit EmojiCursor")
+            .accessibilityLabel("Quit EmojiCursor")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

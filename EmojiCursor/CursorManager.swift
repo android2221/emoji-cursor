@@ -119,7 +119,11 @@ final class CursorManager: ObservableObject {
             } else {
                 try SMAppService.mainApp.unregister()
             }
-            launchAtLogin = enabled
+            refreshLaunchAtLogin()
+            // macOS may want the user to allow the login item first.
+            if enabled && SMAppService.mainApp.status == .requiresApproval {
+                SMAppService.openSystemSettingsLoginItems()
+            }
         } catch {
             refreshLaunchAtLogin()
         }

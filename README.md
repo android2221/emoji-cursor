@@ -13,7 +13,15 @@ brew install --cask emojicursor
 
 Or download the DMG from the [latest release](https://github.com/android2221/emoji-cursor/releases/latest).
 
-EmojiCursor lives in the menu bar (the smiling-face icon). If your menu bar is crowded and the icon is hidden, open EmojiCursor again from Applications or Spotlight to bring up its window.
+Then open EmojiCursor from Applications. macOS asks once whether to open an app downloaded from the internet; that's expected. EmojiCursor lives in the menu bar (the smiling-face icon). If your menu bar is crowded and the icon is hidden, open EmojiCursor again from Applications or Spotlight to bring up its window. Quit it with the power button in that window (⌘Q).
+
+## Uninstall
+
+Turn off **Launch at login** in EmojiCursor first, then:
+
+```sh
+brew uninstall --cask emojicursor         # or add --zap to also remove its settings
+```
 
 ## Develop
 
@@ -27,7 +35,7 @@ xcodebuild test -project EmojiCursor.xcodeproj -scheme EmojiCursor -destination 
 
 Releases are signed with a Developer ID certificate, notarized by Apple and published to GitHub Releases. The Homebrew cask in `Casks/` points at the release zip.
 
-**Automated:** push a version tag.
+**Automated:** push a version tag (`vMAJOR.MINOR.PATCH`) on the default branch. The workflow commits the cask update back to the default branch, so it must allow pushes from `github-actions[bot]`.
 
 ```sh
 git tag v1.0.0 && git push origin v1.0.0
