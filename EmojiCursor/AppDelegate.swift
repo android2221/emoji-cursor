@@ -11,6 +11,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let cursorManager = CursorManager.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Unit tests use the app as their host; don't start the overlay under them.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)

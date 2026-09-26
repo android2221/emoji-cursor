@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABBCC000000000000000045 /* SpringPhysics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000044 /* SpringPhysics.swift */; };
+		AABBCC000000000000000051 /* SpringPhysicsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000041 /* SpringPhysicsTests.swift */; };
+		AABBCC000000000000000052 /* EmojiDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000042 /* EmojiDataTests.swift */; };
 		AABBCC00000000000000000B /* EmojiCursorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000004 /* EmojiCursorApp.swift */; };
 		AABBCC00000000000000000C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000005 /* AppDelegate.swift */; };
 		AABBCC00000000000000000D /* CursorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000006 /* CursorManager.swift */; };
@@ -15,7 +18,21 @@
 		AABBCC000000000000000020 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000021 /* EmojiData.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		AABBCC00000000000000004A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AABBCC000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AABBCC000000000000000013;
+			remoteInfo = EmojiCursor;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		AABBCC000000000000000040 /* EmojiCursorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EmojiCursorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AABBCC000000000000000041 /* SpringPhysicsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpringPhysicsTests.swift; sourceTree = "<group>"; };
+		AABBCC000000000000000042 /* EmojiDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiDataTests.swift; sourceTree = "<group>"; };
+		AABBCC000000000000000044 /* SpringPhysics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpringPhysics.swift; sourceTree = "<group>"; };
 		AABBCC000000000000000004 /* EmojiCursorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiCursorApp.swift; sourceTree = "<group>"; };
 		AABBCC000000000000000005 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AABBCC000000000000000006 /* CursorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorManager.swift; sourceTree = "<group>"; };
@@ -35,6 +52,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AABBCC00000000000000004B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -42,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				AABBCC000000000000000002 /* EmojiCursor */,
+				AABBCC000000000000000043 /* EmojiCursorTests */,
 				AABBCC000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -52,6 +77,7 @@
 				AABBCC000000000000000004 /* EmojiCursorApp.swift */,
 				AABBCC000000000000000005 /* AppDelegate.swift */,
 				AABBCC000000000000000006 /* CursorManager.swift */,
+				AABBCC000000000000000044 /* SpringPhysics.swift */,
 				AABBCC000000000000000007 /* ContentView.swift */,
 				AABBCC000000000000000021 /* EmojiData.swift */,
 				AABBCC000000000000000009 /* Assets.xcassets */,
@@ -65,8 +91,18 @@
 			isa = PBXGroup;
 			children = (
 				AABBCC00000000000000000A /* EmojiCursor.app */,
+				AABBCC000000000000000040 /* EmojiCursorTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AABBCC000000000000000043 /* EmojiCursorTests */ = {
+			isa = PBXGroup;
+			children = (
+				AABBCC000000000000000041 /* SpringPhysicsTests.swift */,
+				AABBCC000000000000000042 /* EmojiDataTests.swift */,
+			);
+			path = EmojiCursorTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -89,6 +125,23 @@
 			productReference = AABBCC00000000000000000A /* EmojiCursor.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AABBCC000000000000000046 /* EmojiCursorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AABBCC000000000000000049 /* Build configuration list for PBXNativeTarget "EmojiCursorTests" */;
+			buildPhases = (
+				AABBCC000000000000000050 /* Sources */,
+				AABBCC00000000000000004B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AABBCC00000000000000004C /* PBXTargetDependency */,
+			);
+			name = EmojiCursorTests;
+			productName = EmojiCursorTests;
+			productReference = AABBCC000000000000000040 /* EmojiCursorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -101,6 +154,10 @@
 				TargetAttributes = {
 					AABBCC000000000000000013 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					AABBCC000000000000000046 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = AABBCC000000000000000013;
 					};
 				};
 			};
@@ -118,6 +175,7 @@
 			projectRoot = "";
 			targets = (
 				AABBCC000000000000000013 /* EmojiCursor */,
+				AABBCC000000000000000046 /* EmojiCursorTests */,
 			);
 		};
 /* End PBXProject section */
@@ -143,10 +201,28 @@
 				AABBCC00000000000000000D /* CursorManager.swift in Sources */,
 				AABBCC00000000000000000E /* ContentView.swift in Sources */,
 				AABBCC000000000000000020 /* EmojiData.swift in Sources */,
+				AABBCC000000000000000045 /* SpringPhysics.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AABBCC000000000000000050 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AABBCC000000000000000051 /* SpringPhysicsTests.swift in Sources */,
+				AABBCC000000000000000052 /* EmojiDataTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AABBCC00000000000000004C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AABBCC000000000000000013 /* EmojiCursor */;
+			targetProxy = AABBCC00000000000000004A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AABBCC000000000000000014 /* Debug */ = {
@@ -310,6 +386,42 @@
 			};
 			name = Release;
 		};
+		AABBCC000000000000000047 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4JKVKDGJN4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.emojicursor.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EmojiCursor.app/Contents/MacOS/EmojiCursor";
+			};
+			name = Debug;
+		};
+		AABBCC000000000000000048 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4JKVKDGJN4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.emojicursor.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EmojiCursor.app/Contents/MacOS/EmojiCursor";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -327,6 +439,15 @@
 			buildConfigurations = (
 				AABBCC000000000000000014 /* Debug */,
 				AABBCC000000000000000015 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AABBCC000000000000000049 /* Build configuration list for PBXNativeTarget "EmojiCursorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AABBCC000000000000000047 /* Debug */,
+				AABBCC000000000000000048 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
