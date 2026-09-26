@@ -5,6 +5,7 @@ extension Notification.Name {
     static let popoverDidShow = Notification.Name("popoverDidShow")
 }
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let hasLaunchedBeforeKey = "hasLaunchedBefore"
 
