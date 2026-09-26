@@ -14,9 +14,6 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !cursorManager.hasAccessibility {
-                accessibilityBanner
-            }
             Divider()
             emojiBrowserSection
                 .padding(.horizontal, 16)
@@ -36,27 +33,6 @@ struct ContentView: View {
     }
 
     // MARK: - Subviews
-
-    private var accessibilityBanner: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Accessibility (Optional)")
-                    .font(.caption).bold()
-                Text("Grant for smoother cursor tracking.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Grant") {
-                cursorManager.requestAccessibilityPermission()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
-    }
 
     private var header: some View {
         HStack {

@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import ServiceManagement
 
 struct AnimationState {
@@ -82,20 +81,17 @@ final class CursorManager: ObservableObject {
 
     @Published private(set) var isActive = false
     @Published var currentEmoji = UserDefaults.standard.string(forKey: DefaultsKey.lastEmoji) ?? "😀"
-    @Published private(set) var hasAccessibility = AXIsProcessTrusted()
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private var overlayWindows: [NSWindow] = []
     private var emojiLayers: [CALayer] = []
 
     // Event sources
-    private var eventTap: CFMachPort?
-    private var tapSource: CFRunLoopSource?
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var clickMonitor: Any?
+    private var localClickMonitor: Any?
     private var visibilityTimer: DispatchSourceTimer?
-    private var accessibilityTimer: DispatchSourceTimer?
     private var displayLink: CVDisplayLink?
     private var lastFrameTime: Double = 0
 
@@ -168,36 +164,6 @@ final class CursorManager: ObservableObject {
         stopVisibilityPolling()
         stopDisplayLink()
         tearDownOverlays()
-    }
-
-    func requestAccessibilityPermission() {
-        let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
-        AXIsProcessTrustedWithOptions(opts)
-        startAccessibilityPolling()
-    }
-
-    func recheckAccessibility() {
-        let trusted = AXIsProcessTrusted()
-        guard hasAccessibility != trusted else { return }
-        hasAccessibility = trusted
-        if trusted { stopAccessibilityPolling() }
-        if isActive { stopTracking(); startTracking() }
-    }
-
-    private func startAccessibilityPolling() {
-        guard accessibilityTimer == nil else { return }
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + 1, repeating: .seconds(2))
-        timer.setEventHandler { [weak self] in
-            self?.recheckAccessibility()
-        }
-        timer.resume()
-        accessibilityTimer = timer
-    }
-
-    private func stopAccessibilityPolling() {
-        accessibilityTimer?.cancel()
-        accessibilityTimer = nil
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -343,71 +309,34 @@ final class CursorManager: ObservableObject {
     // MARK: - Mouse tracking
 
     private func startTracking() {
-        if hasAccessibility, installEventTap() {}
-        else { installNSEventMonitors() }
-    }
-
-    private func stopTracking() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            if let src = tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
-        }
-        eventTap = nil; tapSource = nil
-
-        if let m = globalMonitor { NSEvent.removeMonitor(m) }
-        if let m = localMonitor  { NSEvent.removeMonitor(m) }
-        if let m = clickMonitor  { NSEvent.removeMonitor(m) }
-        globalMonitor = nil; localMonitor = nil; clickMonitor = nil
-
-        setEmojiHidden(false)
-    }
-
-    private func installEventTap() -> Bool {
-        var mask: CGEventMask = 0
-        for t: CGEventType in [.mouseMoved, .leftMouseDragged,
-                                .rightMouseDragged, .otherMouseDragged,
-                                .leftMouseDown, .rightMouseDown] {
-            mask |= (1 << t.rawValue)
-        }
-
-        let ptr = Unmanaged.passUnretained(self).toOpaque()
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap, place: .headInsertEventTap,
-            options: .listenOnly, eventsOfInterest: mask,
-            callback: { _, type, event, info -> Unmanaged<CGEvent>? in
-                guard let info else { return Unmanaged.passRetained(event) }
-                let mgr = Unmanaged<CursorManager>.fromOpaque(info).takeUnretainedValue()
-                if type == .leftMouseDown || type == .rightMouseDown {
-                    DispatchQueue.main.async { mgr.triggerJiggle() }
-                } else {
-                    let cg = event.location
-                    let h = NSScreen.screens.first?.frame.height ?? 0
-                    mgr.setTarget(NSPoint(x: cg.x, y: h - cg.y))
-                }
-                return Unmanaged.passRetained(event)
-            }, userInfo: ptr
-        ) else { return false }
-
-        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        eventTap = tap; tapSource = src
-        return true
-    }
-
-    private func installNSEventMonitors() {
-        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+        let moveMask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: moveMask) { [weak self] _ in
             self?.setTarget(NSEvent.mouseLocation)
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: moveMask) { [weak self] event in
             self?.setTarget(NSEvent.mouseLocation)
             return event
         }
+
+        // Global monitors never see our own events, so clicks inside the
+        // popover need a local monitor too.
         let clickMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: clickMask) { [weak self] _ in
             self?.triggerJiggle()
         }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: clickMask) { [weak self] event in
+            self?.triggerJiggle()
+            return event
+        }
+    }
+
+    private func stopTracking() {
+        for monitor in [globalMonitor, localMonitor, clickMonitor, localClickMonitor].compactMap({ $0 }) {
+            NSEvent.removeMonitor(monitor)
+        }
+        globalMonitor = nil; localMonitor = nil; clickMonitor = nil; localClickMonitor = nil
+
+        setEmojiHidden(false)
     }
 
     private func triggerJiggle() {
