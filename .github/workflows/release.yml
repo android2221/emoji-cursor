@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    env:
+      APP_NAME: EmojiCursor
+      SCHEME: EmojiCursor
+      NOTARY_PROFILE: EmojiCursor-notary
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          rm "$CERT_PATH"
+
+          # Add keychain to search list
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Store notarytool credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD"
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project EmojiCursor.xcodeproj \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -archivePath build/EmojiCursor.xcarchive \
+            MARKETING_VERSION="${{ steps.version.outputs.VERSION }}"
+
+      - name: Export
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/EmojiCursor.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist
+
+      - name: Notarize app
+        run: |
+          ditto -c -k --keepParent "build/export/$APP_NAME.app" "build/$APP_NAME-notarize.zip"
+          xcrun notarytool submit "build/$APP_NAME-notarize.zip" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait
+          rm "build/$APP_NAME-notarize.zip"
+          xcrun stapler staple "build/export/$APP_NAME.app"
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "$APP_NAME" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "$APP_NAME.app" 150 190 \
+            --hide-extension "$APP_NAME.app" \
+            --app-drop-link 450 190 \
+            "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg" \
+            "build/export/$APP_NAME.app" \
+            || true
+
+      - name: Notarize DMG
+        run: |
+          xcrun notarytool submit "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait
+          xcrun stapler staple "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg"
+
+      - name: Create ZIP
+        run: |
+          ditto -c -k --keepParent "build/export/$APP_NAME.app" \
+            "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.zip"
+
+      - name: Generate checksums
+        id: checksums
+        run: |
+          DMG_SHA=$(shasum -a 256 "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg" | awk '{print $1}')
+          ZIP_SHA=$(shasum -a 256 "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.zip" | awk '{print $1}')
+          echo "DMG_SHA=$DMG_SHA" >> "$GITHUB_OUTPUT"
+          echo "ZIP_SHA=$ZIP_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EmojiCursor v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## EmojiCursor v${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+
+            **Direct download:** Download `EmojiCursor-${{ steps.version.outputs.VERSION }}.dmg` below and drag to Applications.
+
+            **Homebrew:**
+            ```
+            brew tap android2221/tap
+            brew install --cask emojicursor
+            ```
+
+            ### SHA256 Checksums
+            - DMG: `${{ steps.checksums.outputs.DMG_SHA }}`
+            - ZIP: `${{ steps.checksums.outputs.ZIP_SHA }}`
+          files: |
+            build/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.dmg
+            build/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true

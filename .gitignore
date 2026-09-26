@@ -12,6 +12,8 @@ project.xcworkspace/
 build/
 DerivedData/
 *.app
+*.xcarchive
+*.dmg
 
 # Swift Package Manager
 .build/
