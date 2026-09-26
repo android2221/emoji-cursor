@@ -222,10 +222,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Size")
                     .font(.system(size: 13))
-                Slider(value: Binding(
-                    get: { cursorManager.emojiSize },
-                    set: { cursorManager.updateSize($0) }
-                ), in: 16...64, step: 2)
+                Slider(value: $cursorManager.emojiSize, in: 16...64, step: 2)
                 .controlSize(.regular)
                 .padding(.horizontal, 8)
             }
@@ -242,7 +239,7 @@ struct ContentView: View {
                 }
                 Slider(value: Binding(
                     get: { Double(cursorManager.tailLength) },
-                    set: { cursorManager.setTailLength(Int($0)) }
+                    set: { cursorManager.tailLength = Int($0) }
                 ), in: 0...15, step: 1)
                 .controlSize(.regular)
                 .padding(.horizontal, 8)
@@ -256,10 +253,7 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            Toggle(isOn: Binding(
-                get: { cursorManager.aliveMotion },
-                set: { cursorManager.setAliveMotion($0) }
-            )) {
+            Toggle(isOn: $cursorManager.aliveMotion) {
                 Text("Alive motion")
                     .font(.system(size: 13))
                     .frame(maxWidth: .infinity, alignment: .leading)

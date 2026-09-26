@@ -3,6 +3,7 @@ import QuartzCore
 
 /// One transparent, click-through window per screen that draws the emoji
 /// and its tail.
+@MainActor
 final class EmojiOverlay {
     private var windows: [NSWindow] = []
     private var emojiLayers: [CALayer] = []

@@ -2,6 +2,10 @@ import XCTest
 @testable import EmojiCursor
 
 /// Needs AppKit, so runs only in the Xcode test target.
+///
+/// Note: `register(defaults:)` writes to the process-wide registration
+/// domain, so these tests rely on every `CursorManager.init` registering
+/// right before it reads.
 final class CursorManagerSettingsTests: XCTestCase {
     private var suiteName: String!
     private var defaults: UserDefaults!
@@ -17,7 +21,7 @@ final class CursorManagerSettingsTests: XCTestCase {
         super.tearDown()
     }
 
-    func testFreshInstallDefaults() {
+    @MainActor func testFreshInstallDefaults() {
         let manager = CursorManager(defaults: defaults, reduceMotion: false)
         XCTAssertEqual(manager.currentEmoji, "😀")
         XCTAssertEqual(manager.emojiSize, 28)
@@ -27,25 +31,25 @@ final class CursorManagerSettingsTests: XCTestCase {
         XCTAssertEqual(manager.tailLength, 0)
     }
 
-    func testReduceMotionTurnsMotionEffectsOffByDefault() {
+    @MainActor func testReduceMotionTurnsMotionEffectsOffByDefault() {
         let manager = CursorManager(defaults: defaults, reduceMotion: true)
         XCTAssertFalse(manager.springEnabled)
         XCTAssertFalse(manager.jiggleOnClick)
         XCTAssertFalse(manager.aliveMotion)
     }
 
-    func testReduceMotionDoesNotOverrideExplicitChoices() {
+    @MainActor func testReduceMotionDoesNotOverrideExplicitChoices() {
         defaults.set(true, forKey: CursorManager.DefaultsKey.springEnabled)
         let manager = CursorManager(defaults: defaults, reduceMotion: true)
         XCTAssertTrue(manager.springEnabled)
     }
 
-    func testSettingsPersistAcrossInstances() {
+    @MainActor func testSettingsPersistAcrossInstances() {
         let first = CursorManager(defaults: defaults, reduceMotion: false)
         first.selectEmoji("🦊")
-        first.updateSize(40)
-        first.setTailLength(5)
-        first.setAliveMotion(true)
+        first.emojiSize = 40
+        first.tailLength = 5
+        first.aliveMotion = true
         first.springEnabled = false
         first.jiggleOnClick = false
 
@@ -58,7 +62,15 @@ final class CursorManagerSettingsTests: XCTestCase {
         XCTAssertFalse(second.jiggleOnClick)
     }
 
-    func testReadsSizeSavedByEarlierVersions() {
+    @MainActor func testExistingInstallIsDetectedFromSavedEmoji() {
+        XCTAssertFalse(AppDelegate.isExistingInstall(defaults: defaults, domain: suiteName))
+        _ = CursorManager(defaults: defaults, reduceMotion: false)  // registration alone doesn't count
+        XCTAssertFalse(AppDelegate.isExistingInstall(defaults: defaults, domain: suiteName))
+        defaults.set("🦊", forKey: CursorManager.DefaultsKey.lastEmoji)
+        XCTAssertTrue(AppDelegate.isExistingInstall(defaults: defaults, domain: suiteName))
+    }
+
+    @MainActor func testReadsSizeSavedByEarlierVersions() {
         // Older builds stored the size as a CGFloat.
         defaults.set(CGFloat(36), forKey: CursorManager.DefaultsKey.emojiSize)
         XCTAssertEqual(CursorManager(defaults: defaults, reduceMotion: false).emojiSize, 36)

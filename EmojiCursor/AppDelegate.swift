@@ -12,6 +12,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover?
     private let cursorManager = CursorManager.shared
 
+    /// True if an earlier version has already run: every version saves the
+    /// last emoji on launch. (`object(forKey:)` can't tell, since registered
+    /// defaults make it non-nil.)
+    static func isExistingInstall(defaults: UserDefaults, domain: String) -> Bool {
+        defaults.persistentDomain(forName: domain)?[CursorManager.DefaultsKey.lastEmoji] != nil
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Unit tests use the app as their host; don't start the overlay under them.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
@@ -36,14 +43,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.popover = popover
 
+        // Checked before activating, which saves the emoji.
+        let defaults = UserDefaults.standard
+        let isFirstLaunch = !defaults.bool(forKey: Self.hasLaunchedBeforeKey)
+            && !Self.isExistingInstall(defaults: defaults, domain: Bundle.main.bundleIdentifier ?? "")
+        defaults.set(true, forKey: Self.hasLaunchedBeforeKey)
+
         // Auto-activate with last used emoji on launch
         cursorManager.activate(emoji: cursorManager.currentEmoji)
 
         // Menu-bar apps have no window, so on first launch open the popover to
         // show the user where the app lives.
-        let defaults = UserDefaults.standard
-        if !defaults.bool(forKey: Self.hasLaunchedBeforeKey) {
-            defaults.set(true, forKey: Self.hasLaunchedBeforeKey)
+        if isFirstLaunch {
             // Wait a runloop turn so the status item has been laid out.
             DispatchQueue.main.async { [weak self] in self?.showPopover() }
         }

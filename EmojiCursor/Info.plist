@@ -18,9 +18,9 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<!-- Hide from Dock; live only in the menu bar -->
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<!-- Hide from Dock; live only in the menu bar -->
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

@@ -3,6 +3,7 @@ import ServiceManagement
 
 /// Floats an emoji charm next to the system cursor with springy physics.
 /// Hides in lock-step with the system cursor by polling CGCursorIsVisible.
+@MainActor
 final class CursorManager: ObservableObject {
     static let shared = CursorManager()
 
@@ -18,12 +19,30 @@ final class CursorManager: ObservableObject {
     @Published private(set) var isActive = false
     @Published var currentEmoji: String
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @Published var emojiSize: CGFloat
+
+    // Settings: each saves itself and applies immediately.
+    @Published var emojiSize: CGFloat {
+        didSet {
+            defaults.set(Double(emojiSize), forKey: DefaultsKey.emojiSize)
+            if isActive { overlay.setEmoji(currentEmoji, size: emojiSize) }
+        }
+    }
     @Published var springEnabled: Bool {
         didSet { defaults.set(springEnabled, forKey: DefaultsKey.springEnabled) }
     }
-    @Published var tailLength: Int
-    @Published var aliveMotion: Bool
+    @Published var tailLength: Int {
+        didSet {
+            defaults.set(tailLength, forKey: DefaultsKey.tailLength)
+            if tailLength == 0 { tail.clear() }
+            wake()
+        }
+    }
+    @Published var aliveMotion: Bool {
+        didSet {
+            defaults.set(aliveMotion, forKey: DefaultsKey.aliveMotion)
+            wake()
+        }
+    }
     @Published var jiggleOnClick: Bool {
         didSet { defaults.set(jiggleOnClick, forKey: DefaultsKey.jiggleOnClick) }
     }
@@ -134,27 +153,6 @@ final class CursorManager: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
-    func updateSize(_ size: CGFloat) {
-        emojiSize = size
-        defaults.set(Double(size), forKey: DefaultsKey.emojiSize)
-        if isActive {
-            overlay.setEmoji(currentEmoji, size: size)
-        }
-    }
-
-    func setAliveMotion(_ enabled: Bool) {
-        aliveMotion = enabled
-        defaults.set(enabled, forKey: DefaultsKey.aliveMotion)
-        wake()
-    }
-
-    func setTailLength(_ length: Int) {
-        tailLength = length
-        defaults.set(length, forKey: DefaultsKey.tailLength)
-        if length == 0 { tail.clear() }
-        wake()
-    }
-
     // MARK: - Screens
 
     @objc private func screensChanged() {
@@ -212,7 +210,8 @@ final class CursorManager: ObservableObject {
     // MARK: - Frame loop
 
     /// The display link runs only while something is moving, and pauses
-    /// itself when everything has come to rest so an idle cursor costs nothing.
+    /// itself when everything has come to rest, so an idle cursor doesn't
+    /// redraw every frame.
     private func startDisplayLink() {
         guard displayLink == nil, let window = overlay.primaryWindow else { return }
         let link = window.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
@@ -309,6 +308,7 @@ final class CursorManager: ObservableObject {
         overlay.setHidden(hidden)
         if hidden {
             tail.clear()
+            animation.jiggleTime = 0  // don't replay a missed jiggle later
         } else {
             wake()
         }

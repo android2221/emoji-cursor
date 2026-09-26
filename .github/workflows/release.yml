@@ -182,7 +182,8 @@ jobs:
           files: |
             build/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.dmg
             build/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.zip
-          draft: false
+          # Stays a draft until the cask update has landed (see below).
+          draft: true
           prerelease: false
 
       - name: Update Homebrew cask
@@ -202,6 +203,11 @@ jobs:
             git commit -am "Update Homebrew cask to $VERSION"
             git push origin "HEAD:$DEFAULT_BRANCH"
           fi
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
 
       - name: Cleanup keychain
         if: always()
