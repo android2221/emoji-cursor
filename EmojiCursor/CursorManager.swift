@@ -1,76 +1,12 @@
 import AppKit
 import ServiceManagement
 
-struct AnimationState {
-    var aliveTime: Double = 0
-    var jiggleTime: Double = 0
-
-    private enum AliveParams {
-        static let bobFrequency: Double = 2.5
-        static let bobAmplitude: CGFloat = 2.0
-        static let breatheFrequency: Double = 3.0
-        static let breatheAmplitude: CGFloat = 0.04
-        static let tiltFrequency: Double = 1.8
-        static let tiltAmplitude: CGFloat = 0.06
-    }
-
-    private enum JiggleParams {
-        static let duration: Double = 0.4
-        static let rotationFrequency: Double = 40
-        static let rotationAmplitude: CGFloat = 0.3
-        static let bounceFrequency: Double = 25
-        static let bounceAmplitude: CGFloat = 4.0
-        static let squashFrequency: Double = 30
-        static let squashAmplitude: CGFloat = 0.15
-    }
-
-    mutating func tick(dt: Double, aliveEnabled: Bool) {
-        if aliveEnabled {
-            aliveTime += dt
-        }
-        if jiggleTime > 0 {
-            jiggleTime -= dt
-            if jiggleTime < 0 { jiggleTime = 0 }
-        }
-    }
-
-    mutating func triggerJiggle() {
-        jiggleTime = JiggleParams.duration
-    }
-
-    func computeTransform(aliveEnabled: Bool) -> CATransform3D {
-        var t = CATransform3DIdentity
-
-        if aliveEnabled {
-            let bobY = CGFloat(sin(aliveTime * AliveParams.bobFrequency)) * AliveParams.bobAmplitude
-            let breathe = 1.0 + CGFloat(sin(aliveTime * AliveParams.breatheFrequency)) * AliveParams.breatheAmplitude
-            let tilt = CGFloat(sin(aliveTime * AliveParams.tiltFrequency)) * AliveParams.tiltAmplitude
-            t = CATransform3DTranslate(t, 0, bobY, 0)
-            t = CATransform3DScale(t, breathe, breathe, 1)
-            t = CATransform3DRotate(t, tilt, 0, 0, 1)
-        }
-
-        if jiggleTime > 0 {
-            let progress = jiggleTime / JiggleParams.duration
-            let decay = progress * progress
-            let angle = CGFloat(sin(jiggleTime * JiggleParams.rotationFrequency)) * JiggleParams.rotationAmplitude * decay
-            let bounce = CGFloat(sin(jiggleTime * JiggleParams.bounceFrequency)) * JiggleParams.bounceAmplitude * decay
-            let squash = 1.0 + CGFloat(sin(jiggleTime * JiggleParams.squashFrequency)) * JiggleParams.squashAmplitude * decay
-            t = CATransform3DTranslate(t, 0, bounce, 0)
-            t = CATransform3DRotate(t, angle, 0, 0, 1)
-            t = CATransform3DScale(t, 2.0 - squash, squash, 1)
-        }
-
-        return t
-    }
-}
-
 /// Floats an emoji charm next to the system cursor with springy physics.
 /// Hides in lock-step with the system cursor by polling CGCursorIsVisible.
 final class CursorManager: ObservableObject {
     static let shared = CursorManager()
 
-    private enum DefaultsKey {
+    enum DefaultsKey {
         static let lastEmoji = "lastEmoji"
         static let emojiSize = "emojiSize"
         static let springEnabled = "springEnabled"
@@ -80,11 +16,20 @@ final class CursorManager: ObservableObject {
     }
 
     @Published private(set) var isActive = false
-    @Published var currentEmoji = UserDefaults.standard.string(forKey: DefaultsKey.lastEmoji) ?? "😀"
+    @Published var currentEmoji: String
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @Published var emojiSize: CGFloat
+    @Published var springEnabled: Bool {
+        didSet { defaults.set(springEnabled, forKey: DefaultsKey.springEnabled) }
+    }
+    @Published var tailLength: Int
+    @Published var aliveMotion: Bool
+    @Published var jiggleOnClick: Bool {
+        didSet { defaults.set(jiggleOnClick, forKey: DefaultsKey.jiggleOnClick) }
+    }
 
-    private var overlayWindows: [NSWindow] = []
-    private var emojiLayers: [CALayer] = []
+    private let defaults: UserDefaults
+    private let overlay = EmojiOverlay()
 
     // Event sources
     private var globalMonitor: Any?
@@ -92,61 +37,57 @@ final class CursorManager: ObservableObject {
     private var clickMonitor: Any?
     private var localClickMonitor: Any?
     private var visibilityTimer: DispatchSourceTimer?
-    private var displayLink: CVDisplayLink?
-    private var lastFrameTime: Double = 0
+    private var displayLink: CADisplayLink?
+    private var lastFrameTime: CFTimeInterval = 0
 
     private var spring = SpringPhysics()
+    private var animation = AnimationState()
+    private var tail = TailTrail()
+    private var emojiHidden = false
 
     /// Offset from cursor tip — tuck it right against the arrow.
     private let offset = CGPoint(x: 3, y: -4)
 
-    @Published var emojiSize: CGFloat = UserDefaults.standard.object(forKey: DefaultsKey.emojiSize) as? CGFloat ?? 28
-    @Published var springEnabled: Bool = UserDefaults.standard.bool(forKey: DefaultsKey.springEnabled) {
-        didSet { UserDefaults.standard.set(springEnabled, forKey: DefaultsKey.springEnabled) }
-    }
-    @Published var tailLength: Int = UserDefaults.standard.object(forKey: DefaultsKey.tailLength) as? Int ?? 0
-    @Published var aliveMotion: Bool = UserDefaults.standard.object(forKey: DefaultsKey.aliveMotion) as? Bool ?? false
-    @Published var jiggleOnClick: Bool = UserDefaults.standard.bool(forKey: DefaultsKey.jiggleOnClick) {
-        didSet { UserDefaults.standard.set(jiggleOnClick, forKey: DefaultsKey.jiggleOnClick) }
-    }
-
-    private var emojiHidden = false
-    private var animation = AnimationState()
-
-    // Tail effect
-    private var tailLayers: [[CALayer]] = []  // [screenIndex][tailIndex]
-    private var positionHistory: [CGPoint] = []
-    private let maxTailSlots = 20
-    private let tailSpacing = 4  // sample every Nth frame for spacing
-
-    private init() {
-        UserDefaults.standard.register(defaults: [
-            DefaultsKey.springEnabled: true,
-            DefaultsKey.jiggleOnClick: true,
+    init(defaults: UserDefaults = .standard,
+         reduceMotion: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) {
+        self.defaults = defaults
+        // Register before reading so first-run values come from here.
+        defaults.register(defaults: [
+            DefaultsKey.lastEmoji: "😀",
+            DefaultsKey.emojiSize: 28.0,
+            DefaultsKey.springEnabled: !reduceMotion,
+            DefaultsKey.jiggleOnClick: !reduceMotion,
+            DefaultsKey.tailLength: 0,
+            DefaultsKey.aliveMotion: false,
         ])
+        currentEmoji = defaults.string(forKey: DefaultsKey.lastEmoji) ?? "😀"
+        emojiSize = CGFloat(defaults.double(forKey: DefaultsKey.emojiSize))
+        springEnabled = defaults.bool(forKey: DefaultsKey.springEnabled)
+        tailLength = defaults.integer(forKey: DefaultsKey.tailLength)
+        aliveMotion = defaults.bool(forKey: DefaultsKey.aliveMotion)
+        jiggleOnClick = defaults.bool(forKey: DefaultsKey.jiggleOnClick)
     }
 
     // MARK: - Public
 
     func selectEmoji(_ emoji: String) {
         currentEmoji = emoji
-        UserDefaults.standard.set(emoji, forKey: DefaultsKey.lastEmoji)
+        defaults.set(emoji, forKey: DefaultsKey.lastEmoji)
         if isActive {
-            updateEmojiImage()
+            overlay.setEmoji(emoji, size: emojiSize)
         }
     }
 
     func activate(emoji: String) {
-        currentEmoji = emoji
-        UserDefaults.standard.set(emoji, forKey: DefaultsKey.lastEmoji)
-
-        if isActive {
-            updateEmojiImage()
-            return
-        }
+        selectEmoji(emoji)
+        guard !isActive else { return }
 
         isActive = true
-        setupOverlays()
+        overlay.build(emoji: currentEmoji, size: emojiSize)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(screensChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
         startTracking()
         startVisibilityPolling()
         startDisplayLink()
@@ -154,7 +95,7 @@ final class CursorManager: ObservableObject {
         // Snap to initial position (no spring lag on first show)
         let pos = NSEvent.mouseLocation
         spring.snap(to: CGPoint(x: pos.x + offset.x, y: pos.y + offset.y))
-        updateLayerPositions()
+        render()
     }
 
     func deactivate() {
@@ -163,7 +104,12 @@ final class CursorManager: ObservableObject {
         stopTracking()
         stopVisibilityPolling()
         stopDisplayLink()
-        tearDownOverlays()
+        NotificationCenter.default.removeObserver(
+            self, name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
+        overlay.tearDown()
+        tail.clear()
+        emojiHidden = false
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -175,135 +121,44 @@ final class CursorManager: ObservableObject {
             }
             launchAtLogin = enabled
         } catch {
-            launchAtLogin = SMAppService.mainApp.status == .enabled
+            refreshLaunchAtLogin()
         }
     }
 
-    // MARK: - Overlays
-
-    private func setupOverlays() {
-        tearDownOverlays()
-        let image = makeEmojiImage()
-        for screen in NSScreen.screens {
-            let window = NSWindow(contentRect: screen.frame, styleMask: .borderless,
-                                  backing: .buffered, defer: false, screen: screen)
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.overlayWindow)) + 1)
-            window.ignoresMouseEvents = true
-            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-            window.isReleasedWhenClosed = false
-
-            let view = NSView(frame: screen.frame)
-            view.wantsLayer = true
-            window.contentView = view
-
-            let layer = CALayer()
-            layer.bounds = CGRect(origin: .zero, size: CGSize(width: emojiSize, height: emojiSize))
-            layer.anchorPoint = CGPoint(x: 0, y: 1)
-            layer.contentsGravity = .resizeAspect
-            layer.contents = image
-
-            // Subtle drop shadow for depth
-            layer.shadowColor = NSColor.black.cgColor
-            layer.shadowOpacity = 0.3
-            layer.shadowOffset = CGSize(width: 0.5, height: -1)
-            layer.shadowRadius = 2
-
-            // Create tail layers (behind the main emoji)
-            var screenTailLayers: [CALayer] = []
-            for t in 0..<maxTailSlots {
-                let tailLayer = CALayer()
-                tailLayer.bounds = CGRect(origin: .zero, size: CGSize(width: emojiSize, height: emojiSize))
-                tailLayer.anchorPoint = CGPoint(x: 0, y: 1)
-                tailLayer.contentsGravity = .resizeAspect
-                tailLayer.contents = image
-                tailLayer.opacity = 0  // hidden until tail is enabled
-                let frac = Float(t + 1) / Float(maxTailSlots)
-                tailLayer.transform = CATransform3DMakeScale(CGFloat(1.0 - 0.4 * frac), CGFloat(1.0 - 0.4 * frac), 1)
-                view.layer?.addSublayer(tailLayer)
-                screenTailLayers.append(tailLayer)
-            }
-
-            view.layer?.addSublayer(layer)
-
-            window.orderFrontRegardless()
-            overlayWindows.append(window)
-            emojiLayers.append(layer)
-            tailLayers.append(screenTailLayers)
-        }
-
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(screensChanged),
-            name: NSApplication.didChangeScreenParametersNotification, object: nil
-        )
-    }
-
-    private func tearDownOverlays() {
-        overlayWindows.forEach { $0.orderOut(nil) }
-        overlayWindows.removeAll()
-        emojiLayers.removeAll()
-        tailLayers.removeAll()
-        NotificationCenter.default.removeObserver(
-            self, name: NSApplication.didChangeScreenParametersNotification, object: nil
-        )
-    }
-
-    @objc private func screensChanged() {
-        guard isActive else { return }
-        setupOverlays()
-    }
-
-    private func updateEmojiImage() {
-        let image = makeEmojiImage()
-        let bounds = CGRect(origin: .zero, size: CGSize(width: emojiSize, height: emojiSize))
-        for layer in emojiLayers {
-            layer.bounds = bounds
-            layer.contents = image
-        }
-        for screenLayers in tailLayers {
-            for (t, layer) in screenLayers.enumerated() {
-                layer.bounds = bounds
-                layer.contents = image
-                let frac = Float(t + 1) / Float(maxTailSlots)
-                layer.transform = CATransform3DMakeScale(CGFloat(1.0 - 0.4 * frac), CGFloat(1.0 - 0.4 * frac), 1)
-            }
-        }
+    /// The user can remove the login item in System Settings; re-read it.
+    func refreshLaunchAtLogin() {
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     func updateSize(_ size: CGFloat) {
         emojiSize = size
-        UserDefaults.standard.set(size, forKey: DefaultsKey.emojiSize)
-        if isActive { updateEmojiImage() }
+        defaults.set(Double(size), forKey: DefaultsKey.emojiSize)
+        if isActive {
+            overlay.setEmoji(currentEmoji, size: size)
+        }
     }
 
     func setAliveMotion(_ enabled: Bool) {
         aliveMotion = enabled
-        UserDefaults.standard.set(enabled, forKey: DefaultsKey.aliveMotion)
-        if !enabled {
-            // Reset transforms to identity
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            for layer in emojiLayers {
-                layer.transform = CATransform3DIdentity
-            }
-            CATransaction.commit()
-        }
+        defaults.set(enabled, forKey: DefaultsKey.aliveMotion)
+        wake()
     }
 
     func setTailLength(_ length: Int) {
         tailLength = length
-        UserDefaults.standard.set(length, forKey: DefaultsKey.tailLength)
-        if length == 0 {
-            positionHistory.removeAll()
-            // Hide all tail layers
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            for screenLayers in tailLayers {
-                for layer in screenLayers { layer.opacity = 0 }
-            }
-            CATransaction.commit()
-        }
+        defaults.set(length, forKey: DefaultsKey.tailLength)
+        if length == 0 { tail.clear() }
+        wake()
+    }
+
+    // MARK: - Screens
+
+    @objc private func screensChanged() {
+        guard isActive else { return }
+        stopDisplayLink()
+        overlay.build(emoji: currentEmoji, size: emojiSize)
+        overlay.setHidden(emojiHidden)
+        startDisplayLink()
     }
 
     // MARK: - Mouse tracking
@@ -335,108 +190,75 @@ final class CursorManager: ObservableObject {
             NSEvent.removeMonitor(monitor)
         }
         globalMonitor = nil; localMonitor = nil; clickMonitor = nil; localClickMonitor = nil
-
-        setEmojiHidden(false)
     }
 
     private func triggerJiggle() {
         guard jiggleOnClick else { return }
         animation.triggerJiggle()
+        wake()
     }
 
     /// Called on every mouse event — just updates the target, the display
     /// link handles the smooth interpolation.
     private func setTarget(_ mouse: NSPoint) {
         spring.target = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
+        wake()
     }
 
-    // MARK: - Display link (spring physics)
+    // MARK: - Frame loop
 
+    /// The display link runs only while something is moving, and pauses
+    /// itself when everything has come to rest so an idle cursor costs nothing.
     private func startDisplayLink() {
-        var link: CVDisplayLink?
-        CVDisplayLinkCreateWithActiveCGDisplays(&link)
-        guard let link else { return }
-
-        lastFrameTime = CACurrentMediaTime()
-        let ptr = Unmanaged.passUnretained(self).toOpaque()
-        CVDisplayLinkSetOutputCallback(link, { _, inNow, _, _, _, userInfo -> CVReturn in
-            guard let userInfo else { return kCVReturnSuccess }
-            let mgr = Unmanaged<CursorManager>.fromOpaque(userInfo).takeUnretainedValue()
-            let now = Double(inNow.pointee.videoTime) / Double(inNow.pointee.videoTimeScale)
-            let last = mgr.lastFrameTime
-            let dt = last > 0 ? min(now - last, 1.0 / 30.0) : 1.0 / 60.0
-            mgr.lastFrameTime = now
-            DispatchQueue.main.async { mgr.stepSpring(dt: dt) }
-            return kCVReturnSuccess
-        }, ptr)
-
-        CVDisplayLinkStart(link)
+        guard displayLink == nil, let window = overlay.primaryWindow else { return }
+        let link = window.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
+        link.add(to: .main, forMode: .common)
+        lastFrameTime = 0
         displayLink = link
     }
 
     private func stopDisplayLink() {
-        if let link = displayLink {
-            CVDisplayLinkStop(link)
-        }
+        displayLink?.invalidate()
         displayLink = nil
     }
 
-    /// Advance the spring simulation one tick and update layers.
-    private func stepSpring(dt: Double) {
+    /// Resume per-frame updates after input or a settings change.
+    private func wake() {
+        guard let link = displayLink, link.isPaused else { return }
+        lastFrameTime = 0
+        link.isPaused = false
+    }
+
+    @objc private func displayLinkFired(_ link: CADisplayLink) {
+        let now = link.timestamp
+        let dt = lastFrameTime > 0 ? min(now - lastFrameTime, 1.0 / 30.0) : 1.0 / 60.0
+        lastFrameTime = now
+        step(dt: dt)
+        if isIdle { link.isPaused = true }
+    }
+
+    private var isIdle: Bool {
+        emojiHidden || (spring.isSettled && !aliveMotion && !animation.isJiggling
+                        && tail.isSettled(at: spring.current))
+    }
+
+    /// Advance the simulation one frame and redraw.
+    private func step(dt: Double) {
         guard isActive, !emojiHidden else { return }
 
         if springEnabled {
             spring.step(dt: CGFloat(dt))
         } else {
-            spring.current = spring.target
-            spring.velocity = .zero
+            spring.snap(to: spring.target)
         }
-
         animation.tick(dt: dt, aliveEnabled: aliveMotion)
-
-        // Record position history for tail
-        if tailLength > 0 {
-            positionHistory.insert(spring.current, at: 0)
-            let needed = tailLength * tailSpacing + 1
-            if positionHistory.count > needed {
-                positionHistory.removeSubrange(needed...)
-            }
-        }
-
-        updateLayerPositions()
+        tail.record(spring.current, length: tailLength)
+        render()
     }
 
-    private func updateLayerPositions() {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for i in overlayWindows.indices {
-            let origin = overlayWindows[i].frame.origin
-            emojiLayers[i].position = CGPoint(
-                x: spring.current.x - origin.x,
-                y: spring.current.y - origin.y
-            )
-
-            emojiLayers[i].transform = animation.computeTransform(aliveEnabled: aliveMotion)
-
-            // Update tail layers
-            guard i < tailLayers.count else { continue }
-            for t in 0..<maxTailSlots {
-                let layer = tailLayers[i][t]
-                if t < tailLength {
-                    let histIdx = (t + 1) * tailSpacing
-                    if histIdx < positionHistory.count {
-                        let pos = positionHistory[histIdx]
-                        layer.position = CGPoint(x: pos.x - origin.x, y: pos.y - origin.y)
-                        layer.opacity = Float(tailLength - t) / Float(tailLength + 1) * 0.6
-                    } else {
-                        layer.opacity = 0
-                    }
-                } else {
-                    layer.opacity = 0
-                }
-            }
-        }
-        CATransaction.commit()
+    private func render() {
+        overlay.update(position: spring.current, animation: animation, aliveEnabled: aliveMotion,
+                       tail: tail, tailLength: tailLength)
     }
 
     // MARK: - Cursor visibility polling
@@ -464,7 +286,7 @@ final class CursorManager: ObservableObject {
         guard let isVisible = Self.queryCursorVisible else { return }
 
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(50))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(50), leeway: .milliseconds(10))
         timer.setEventHandler { [weak self] in
             self?.setEmojiHidden(!isVisible())
         }
@@ -480,31 +302,11 @@ final class CursorManager: ObservableObject {
     private func setEmojiHidden(_ hidden: Bool) {
         guard emojiHidden != hidden else { return }
         emojiHidden = hidden
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        emojiLayers.forEach { $0.opacity = hidden ? 0 : 1 }
+        overlay.setHidden(hidden)
         if hidden {
-            for screenLayers in tailLayers {
-                for layer in screenLayers { layer.opacity = 0 }
-            }
-            positionHistory.removeAll()
+            tail.clear()
+        } else {
+            wake()
         }
-        CATransaction.commit()
-    }
-
-    // MARK: - Render
-
-    private func makeEmojiImage() -> CGImage? {
-        let sz = NSSize(width: emojiSize, height: emojiSize)
-        let img = NSImage(size: sz, flipped: false) { rect in
-            let str = NSAttributedString(string: self.currentEmoji, attributes: [
-                .font: NSFont.systemFont(ofSize: self.emojiSize * 0.85)
-            ])
-            let strSz = str.size()
-            str.draw(at: NSPoint(x: (rect.width - strSz.width) / 2,
-                                 y: (rect.height - strSz.height) / 2))
-            return true
-        }
-        return img.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 }

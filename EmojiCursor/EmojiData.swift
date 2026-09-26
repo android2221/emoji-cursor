@@ -4,6 +4,9 @@ struct EmojiCategory: Identifiable {
     let id: String
     let icon: String
     let emojis: [String]
+
+    /// Human-readable name, used for tooltips and VoiceOver.
+    var title: String { id.capitalized }
 }
 
 // MARK: - Emoji Search Keywords
@@ -297,6 +300,21 @@ enum EmojiSkinTone {
 }
 
 enum EmojiData {
+    /// The emojis to show: the selected category, or matches from every
+    /// category when there's a search query.
+    static func emojis(category: String, query: String) -> [String] {
+        let query = query.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else {
+            return categories.first { $0.id == category }?.emojis ?? []
+        }
+        return categories.flatMap(\.emojis).filter { emoji in
+            // Check keyword aliases first, then fall back to Unicode scalar names.
+            EmojiKeywords.matches(emoji, query: query) || emoji.unicodeScalars.contains { scalar in
+                scalar.properties.name?.lowercased().contains(query) ?? false
+            }
+        }
+    }
+
     static let categories: [EmojiCategory] = [
         EmojiCategory(id: "smileys", icon: "😀", emojis: [
             "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃",

@@ -7,6 +7,9 @@ struct SpringPhysics {
     var stiffness: CGFloat = 0.35
     var damping: CGFloat = 0.75
 
+    /// At rest on the target; stepping further won't move anything.
+    var isSettled: Bool { current == target && velocity == .zero }
+
     /// Advance the spring one frame. Returns true if position changed.
     @discardableResult
     mutating func step(dt: CGFloat) -> Bool {

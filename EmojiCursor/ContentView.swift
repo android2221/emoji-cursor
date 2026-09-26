@@ -29,6 +29,7 @@ struct ContentView: View {
         .frame(width: 300)
         .onReceive(NotificationCenter.default.publisher(for: .popoverDidShow)) { _ in
             searchText = ""
+            cursorManager.refreshLaunchAtLogin()
         }
     }
 
@@ -53,22 +54,6 @@ struct ContentView: View {
     }
 
     // MARK: - Emoji Browser
-
-    private var currentEmojis: [String] {
-        let query = searchText.lowercased().trimmingCharacters(in: .whitespaces)
-        if query.isEmpty {
-            return EmojiData.categories.first(where: { $0.id == selectedCategory })?.emojis ?? []
-        }
-        return EmojiData.categories.flatMap { $0.emojis }.filter { emoji in
-            // Check keyword aliases first
-            if EmojiKeywords.matches(emoji, query: query) { return true }
-            // Fall back to Unicode scalar names
-            return emoji.unicodeScalars.contains { scalar in
-                let name = scalar.properties.name?.lowercased() ?? ""
-                return name.contains(query)
-            }
-        }
-    }
 
     private var emojiBrowserSection: some View {
         VStack(spacing: 6) {
@@ -115,6 +100,9 @@ struct ContentView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 5))
                             }
                             .buttonStyle(.plain)
+                            .help(category.title)
+                            .accessibilityLabel(category.title)
+                            .accessibilityAddTraits(selectedCategory == category.id ? .isSelected : [])
                         }
                     }
                     .padding(.horizontal, 4)
@@ -126,7 +114,7 @@ struct ContentView: View {
             }
 
             // Emoji grid
-            let emojis = currentEmojis
+            let emojis = EmojiData.emojis(category: selectedCategory, query: searchText)
             if emojis.isEmpty {
                 Text("No emojis found")
                     .font(.caption)
