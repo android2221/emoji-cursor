@@ -5,9 +5,12 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write  # create the release and commit the cask update
+
 jobs:
   build-and-release:
-    runs-on: macos-latest
+    runs-on: macos-15
     env:
       APP_NAME: EmojiCursor
       SCHEME: EmojiCursor
@@ -16,10 +19,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for the build number
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: |
+          xcodebuild test \
+            -project EmojiCursor.xcodeproj \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Install create-dmg
         run: brew install create-dmg
@@ -69,7 +84,8 @@ jobs:
             -scheme "$SCHEME" \
             -configuration Release \
             -archivePath build/EmojiCursor.xcarchive \
-            MARKETING_VERSION="${{ steps.version.outputs.VERSION }}"
+            MARKETING_VERSION="${{ steps.version.outputs.VERSION }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.BUILD_NUMBER }}"
 
       - name: Export
         run: |
@@ -86,20 +102,28 @@ jobs:
             --wait
           rm "build/$APP_NAME-notarize.zip"
           xcrun stapler staple "build/export/$APP_NAME.app"
+          spctl --assess --type execute --verbose=2 "build/export/$APP_NAME.app"
 
       - name: Create DMG
         run: |
+          DMG="build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg"
+          ICON="build/export/$APP_NAME.app/Contents/Resources/AppIcon.icns"
+          ICON_ARGS=()
+          [ -f "$ICON" ] && ICON_ARGS=(--volicon "$ICON")
+          # create-dmg can exit non-zero on cosmetic issues; check the output instead.
           create-dmg \
             --volname "$APP_NAME" \
+            ${ICON_ARGS[@]+"${ICON_ARGS[@]}"} \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
             --icon "$APP_NAME.app" 150 190 \
             --hide-extension "$APP_NAME.app" \
             --app-drop-link 450 190 \
-            "build/$APP_NAME-${{ steps.version.outputs.VERSION }}.dmg" \
+            "$DMG" \
             "build/export/$APP_NAME.app" \
             || true
+          test -f "$DMG"
 
       - name: Notarize DMG
         run: |
@@ -134,7 +158,7 @@ jobs:
 
             **Homebrew:**
             ```
-            brew tap android2221/tap
+            brew tap android2221/emoji-cursor https://github.com/android2221/emoji-cursor
             brew install --cask emojicursor
             ```
 
@@ -146,6 +170,20 @@ jobs:
             build/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.zip
           draft: false
           prerelease: false
+
+      - name: Update Homebrew cask
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          ZIP_SHA: ${{ steps.checksums.outputs.ZIP_SHA }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B cask-update "origin/$DEFAULT_BRANCH"
+          ./scripts/update-cask.sh "$VERSION" "$ZIP_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update Homebrew cask to $VERSION"
+          git push origin "HEAD:$DEFAULT_BRANCH"
 
       - name: Cleanup keychain
         if: always()

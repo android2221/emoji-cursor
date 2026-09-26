@@ -15,10 +15,12 @@ NOTARY_PROFILE="EmojiCursor-notary"
 
 # Get version from argument or git tag
 VERSION="${1:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")}"
+# Build number must increase with every release; the commit count does.
+BUILD_NUMBER="$(git -C "$PROJECT_DIR" rev-list --count HEAD)"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 ZIP_NAME="${APP_NAME}-${VERSION}.zip"
 
-echo "=== Building EmojiCursor v${VERSION} ==="
+echo "=== Building EmojiCursor v${VERSION} (build ${BUILD_NUMBER}) ==="
 
 # Clean build directory
 rm -rf "$BUILD_DIR"
@@ -33,6 +35,7 @@ xcodebuild archive \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
     MARKETING_VERSION="$VERSION" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     | tail -5
 
 echo "Archive created at $ARCHIVE_PATH"
@@ -78,9 +81,16 @@ echo ""
 echo "=== Step 6: Creating DMG ==="
 DMG_PATH="$BUILD_DIR/$DMG_NAME"
 
+ICON_ARGS=()
+if [ -f "$APP_PATH/Contents/Resources/AppIcon.icns" ]; then
+    ICON_ARGS=(--volicon "$APP_PATH/Contents/Resources/AppIcon.icns")
+fi
+
+# create-dmg can exit non-zero on cosmetic issues (e.g. Finder layout), so
+# check for the DMG itself rather than trusting the exit code.
 create-dmg \
     --volname "$APP_NAME" \
-    --volicon "$APP_PATH/Contents/Resources/AppIcon.icns" \
+    ${ICON_ARGS[@]+"${ICON_ARGS[@]}"} \
     --window-pos 200 120 \
     --window-size 600 400 \
     --icon-size 100 \
@@ -89,7 +99,8 @@ create-dmg \
     --app-drop-link 450 190 \
     "$DMG_PATH" \
     "$APP_PATH" \
-    || true  # create-dmg returns non-zero if no icon file found, but DMG is still created
+    || true
+[ -f "$DMG_PATH" ] || { echo "error: create-dmg did not produce $DMG_PATH" >&2; exit 1; }
 
 # Step 7: Notarize DMG
 echo ""
@@ -117,7 +128,7 @@ echo "SHA256 checksums:"
 echo "  DMG: $(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
 echo "  ZIP: $(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 echo ""
-echo "Next steps:"
+echo "Next steps (or just push a v${VERSION} tag and let CI do all of this):"
 echo "  1. git tag v${VERSION} && git push origin v${VERSION}"
-echo "  2. Upload DMG and ZIP to GitHub Release"
-echo "  3. Update Homebrew cask with new version and SHA256"
+echo "  2. Upload DMG and ZIP to the GitHub release"
+echo "  3. ./scripts/update-cask.sh ${VERSION} $(shasum -a 256 "$ZIP_PATH" | awk '{print $1}') and commit"

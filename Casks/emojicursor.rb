@@ -4,14 +4,19 @@ cask "emojicursor" do
 
   url "https://github.com/android2221/emoji-cursor/releases/download/v#{version}/EmojiCursor-#{version}.zip"
   name "EmojiCursor"
-  desc "Overlay emojis on your cursor"
+  desc "Floating emoji that follows your mouse pointer"
   homepage "https://github.com/android2221/emoji-cursor"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
 
   depends_on macos: ">= :sonoma"
 
   app "EmojiCursor.app"
 
-  zap trash: [
-    "~/Library/Preferences/com.emojicursor.app.plist",
-  ]
+  uninstall quit: "com.emojicursor.app"
+
+  zap trash: "~/Library/Preferences/com.emojicursor.app.plist"
 end
