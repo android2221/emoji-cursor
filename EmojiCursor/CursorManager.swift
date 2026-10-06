@@ -34,7 +34,7 @@ final class CursorManager: ObservableObject {
 
     /// Chosen images are copied here, so moving or deleting the original
     /// doesn't break the cursor.
-    static var defaultImageDirectory: URL {
+    nonisolated static var defaultImageDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "EmojiCursor", isDirectory: true)
     }
