@@ -1,7 +1,8 @@
 import AppKit
 import ServiceManagement
 
-/// Floats an emoji charm next to the system cursor with springy physics.
+/// Floats an emoji (or the user's own image) next to the system cursor with
+/// springy physics.
 /// Hides in lock-step with the system cursor by polling CGCursorIsVisible.
 @MainActor
 final class CursorManager: ObservableObject {
@@ -14,17 +15,43 @@ final class CursorManager: ObservableObject {
         static let tailLength = "tailLength"
         static let aliveMotion = "aliveMotion"
         static let jiggleOnClick = "jiggleOnClick"
+        static let usesImage = "usesImage"
+        static let imageFileName = "imageFileName"
+    }
+
+    enum ImageError: LocalizedError {
+        case unreadable, tooLarge
+
+        var errorDescription: String? {
+            switch self {
+            case .unreadable: return "EmojiCursor can't read that file. Choose a PNG, JPEG or GIF."
+            case .tooLarge: return "That image is too large. Choose one under 20 MB."
+            }
+        }
+    }
+
+    static let maxImageFileSize = 20_000_000
+
+    /// Chosen images are copied here, so moving or deleting the original
+    /// doesn't break the cursor.
+    static var defaultImageDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "EmojiCursor", isDirectory: true)
     }
 
     @Published private(set) var isActive = false
-    @Published var currentEmoji: String
+    @Published private(set) var currentEmoji: String
+    /// True when the cursor shows the saved image instead of the emoji.
+    @Published private(set) var usesImage: Bool
+    /// The saved copy of the user's image, if they've chosen one.
+    @Published private(set) var imageURL: URL? = nil
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     // Settings: each saves itself and applies immediately.
     @Published var emojiSize: CGFloat {
         didSet {
             defaults.set(Double(emojiSize), forKey: DefaultsKey.emojiSize)
-            if isActive { overlay.setEmoji(currentEmoji, size: emojiSize) }
+            refreshOverlay()
         }
     }
     @Published var springEnabled: Bool {
@@ -48,6 +75,8 @@ final class CursorManager: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    private let imageDirectory: URL
+    private var imageArt: CursorArt?
     private let overlay = EmojiOverlay()
 
     // Event sources
@@ -68,8 +97,10 @@ final class CursorManager: ObservableObject {
     private let offset = CGPoint(x: 3, y: -4)
 
     init(defaults: UserDefaults = .standard,
-         reduceMotion: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) {
+         reduceMotion: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+         imageDirectory: URL = CursorManager.defaultImageDirectory) {
         self.defaults = defaults
+        self.imageDirectory = imageDirectory
         // Register before reading so first-run values come from here.
         defaults.register(defaults: [
             DefaultsKey.lastEmoji: "😀",
@@ -78,6 +109,7 @@ final class CursorManager: ObservableObject {
             DefaultsKey.jiggleOnClick: !reduceMotion,
             DefaultsKey.tailLength: 0,
             DefaultsKey.aliveMotion: false,
+            DefaultsKey.usesImage: false,
         ])
         currentEmoji = defaults.string(forKey: DefaultsKey.lastEmoji) ?? "😀"
         emojiSize = CGFloat(defaults.double(forKey: DefaultsKey.emojiSize))
@@ -85,6 +117,16 @@ final class CursorManager: ObservableObject {
         tailLength = defaults.integer(forKey: DefaultsKey.tailLength)
         aliveMotion = defaults.bool(forKey: DefaultsKey.aliveMotion)
         jiggleOnClick = defaults.bool(forKey: DefaultsKey.jiggleOnClick)
+
+        // Fall back to the emoji if the saved image has gone missing.
+        var savedImage: (url: URL, art: CursorArt)?
+        if let name = defaults.string(forKey: DefaultsKey.imageFileName) {
+            let url = imageDirectory.appendingPathComponent(name)
+            if let art = CursorArt.image(contentsOf: url) { savedImage = (url, art) }
+        }
+        imageURL = savedImage?.url
+        imageArt = savedImage?.art
+        usesImage = defaults.bool(forKey: DefaultsKey.usesImage) && savedImage != nil
     }
 
     // MARK: - Public
@@ -92,17 +134,49 @@ final class CursorManager: ObservableObject {
     func selectEmoji(_ emoji: String) {
         currentEmoji = emoji
         defaults.set(emoji, forKey: DefaultsKey.lastEmoji)
-        if isActive {
-            overlay.setEmoji(emoji, size: emojiSize)
-        }
+        setUsesImage(false)
+        refreshOverlay()
     }
 
-    func activate(emoji: String) {
-        selectEmoji(emoji)
+    /// Copies a PNG, JPEG or GIF into the app's support folder and shows it
+    /// instead of the emoji. Replaces any image chosen before.
+    func selectImage(at source: URL) throws {
+        let fileSize = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard fileSize <= Self.maxImageFileSize else { throw ImageError.tooLarge }
+
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        let ext = source.pathExtension.isEmpty ? "image" : source.pathExtension.lowercased()
+        let copy = imageDirectory.appendingPathComponent("cursor-\(UUID().uuidString).\(ext)")
+        try fileManager.copyItem(at: source, to: copy)
+        guard let art = CursorArt.image(contentsOf: copy) else {
+            try? fileManager.removeItem(at: copy)
+            throw ImageError.unreadable
+        }
+
+        if let old = imageURL { try? fileManager.removeItem(at: old) }
+        imageURL = copy
+        imageArt = art
+        defaults.set(copy.lastPathComponent, forKey: DefaultsKey.imageFileName)
+        setUsesImage(true)
+        refreshOverlay()
+    }
+
+    /// Switch back to the image chosen earlier.
+    func useSavedImage() {
+        guard imageArt != nil else { return }
+        setUsesImage(true)
+        refreshOverlay()
+    }
+
+    func activate() {
+        // Every version saves the emoji on launch; AppDelegate relies on it
+        // to recognise upgrades.
+        defaults.set(currentEmoji, forKey: DefaultsKey.lastEmoji)
         guard !isActive else { return }
 
         isActive = true
-        overlay.build(emoji: currentEmoji, size: emojiSize)
+        overlay.build(art: currentArt, size: emojiSize)
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
@@ -153,12 +227,28 @@ final class CursorManager: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
+    // MARK: - Art
+
+    private var currentArt: CursorArt {
+        if usesImage, let imageArt { return imageArt }
+        return .emoji(currentEmoji, size: emojiSize)
+    }
+
+    private func setUsesImage(_ value: Bool) {
+        usesImage = value
+        defaults.set(value, forKey: DefaultsKey.usesImage)
+    }
+
+    private func refreshOverlay() {
+        if isActive { overlay.setArt(currentArt, size: emojiSize) }
+    }
+
     // MARK: - Screens
 
     @objc private func screensChanged() {
         guard isActive else { return }
         stopDisplayLink()
-        overlay.build(emoji: currentEmoji, size: emojiSize)
+        overlay.build(art: currentArt, size: emojiSize)
         overlay.setHidden(emojiHidden)
         startDisplayLink()
     }

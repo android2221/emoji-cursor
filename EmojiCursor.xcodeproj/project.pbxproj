@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABBCC00000000000000006F /* CursorArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC00000000000000006E /* CursorArt.swift */; };
+		AABBCC000000000000000071 /* CursorArtTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000070 /* CursorArtTests.swift */; };
 		AABBCC00000000000000006D /* CursorManagerSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC00000000000000006C /* CursorManagerSettingsTests.swift */; };
 		AABBCC00000000000000006B /* EmojiSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC00000000000000006A /* EmojiSearchTests.swift */; };
 		AABBCC000000000000000069 /* TailTrailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC000000000000000068 /* TailTrailTests.swift */; };
@@ -36,6 +38,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AABBCC00000000000000006E /* CursorArt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorArt.swift; sourceTree = "<group>"; };
+		AABBCC000000000000000070 /* CursorArtTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorArtTests.swift; sourceTree = "<group>"; };
 		AABBCC00000000000000006C /* CursorManagerSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorManagerSettingsTests.swift; sourceTree = "<group>"; };
 		AABBCC00000000000000006A /* EmojiSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiSearchTests.swift; sourceTree = "<group>"; };
 		AABBCC000000000000000068 /* TailTrailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailTrailTests.swift; sourceTree = "<group>"; };
@@ -93,6 +97,7 @@
 				AABBCC000000000000000006 /* CursorManager.swift */,
 				AABBCC000000000000000044 /* SpringPhysics.swift */,
 				AABBCC000000000000000064 /* EmojiOverlay.swift */,
+				AABBCC00000000000000006E /* CursorArt.swift */,
 				AABBCC000000000000000062 /* TailTrail.swift */,
 				AABBCC000000000000000060 /* CursorAnimation.swift */,
 				AABBCC000000000000000007 /* ContentView.swift */,
@@ -122,6 +127,7 @@
 				AABBCC00000000000000006A /* EmojiSearchTests.swift */,
 				AABBCC000000000000000068 /* TailTrailTests.swift */,
 				AABBCC000000000000000066 /* CursorAnimationTests.swift */,
+				AABBCC000000000000000070 /* CursorArtTests.swift */,
 			);
 			path = EmojiCursorTests;
 			sourceTree = "<group>";
@@ -224,6 +230,7 @@
 				AABBCC000000000000000020 /* EmojiData.swift in Sources */,
 				AABBCC000000000000000045 /* SpringPhysics.swift in Sources */,
 				AABBCC000000000000000065 /* EmojiOverlay.swift in Sources */,
+				AABBCC00000000000000006F /* CursorArt.swift in Sources */,
 				AABBCC000000000000000063 /* TailTrail.swift in Sources */,
 				AABBCC000000000000000061 /* CursorAnimation.swift in Sources */,
 			);
@@ -236,6 +243,7 @@
 				AABBCC000000000000000051 /* SpringPhysicsTests.swift in Sources */,
 				AABBCC000000000000000052 /* EmojiDataTests.swift in Sources */,
 				AABBCC00000000000000006D /* CursorManagerSettingsTests.swift in Sources */,
+				AABBCC000000000000000071 /* CursorArtTests.swift in Sources */,
 				AABBCC00000000000000006B /* EmojiSearchTests.swift in Sources */,
 				AABBCC000000000000000069 /* TailTrailTests.swift in Sources */,
 				AABBCC000000000000000067 /* CursorAnimationTests.swift in Sources */,

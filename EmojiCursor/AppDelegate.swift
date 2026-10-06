@@ -50,8 +50,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             && !Self.isExistingInstall(defaults: defaults, domain: Bundle.main.bundleIdentifier ?? "")
         defaults.set(true, forKey: Self.hasLaunchedBeforeKey)
 
-        // Auto-activate with last used emoji on launch
-        cursorManager.activate(emoji: cursorManager.currentEmoji)
+        // Auto-activate with the last used emoji or image on launch
+        cursorManager.activate()
 
         // Menu-bar apps have no window, so on first launch open the popover to
         // show the user where the app lives.

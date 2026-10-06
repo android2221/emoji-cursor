@@ -1,6 +1,6 @@
 # EmojiCursor
 
-A macOS menu bar app that floats an emoji next to your mouse pointer, with optional spring physics, a fading tail, idle "alive" motion and a jiggle when you click.
+A macOS menu bar app that floats an emoji (or your own PNG, JPEG or animated GIF) next to your mouse pointer, with optional spring physics, a fading tail, idle "alive" motion and a jiggle when you click.
 
 Requires macOS 14 (Sonoma) or later. EmojiCursor asks for no special permissions, collects no data and makes no network connections.
 

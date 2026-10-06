@@ -2,7 +2,7 @@ import AppKit
 import QuartzCore
 
 /// One transparent, click-through window per screen that draws the emoji
-/// and its tail.
+/// (or image) and its tail.
 @MainActor
 final class EmojiOverlay {
     private var windows: [NSWindow] = []
@@ -12,9 +12,8 @@ final class EmojiOverlay {
     /// Used to drive the display link.
     var primaryWindow: NSWindow? { windows.first }
 
-    func build(emoji: String, size: CGFloat) {
+    func build(art: CursorArt, size: CGFloat) {
         tearDown()
-        let image = Self.render(emoji, size: size)
         let bounds = CGRect(origin: .zero, size: CGSize(width: size, height: size))
 
         for screen in NSScreen.screens {
@@ -34,14 +33,14 @@ final class EmojiOverlay {
             // Tail layers go in first so they draw behind the emoji.
             var screenTailLayers: [CALayer] = []
             for slot in 0..<TailTrail.maxSlots {
-                let tailLayer = Self.makeEmojiLayer(image: image, bounds: bounds)
+                let tailLayer = Self.makeEmojiLayer(art: art, bounds: bounds)
                 tailLayer.opacity = 0
                 tailLayer.transform = Self.tailTransform(slot: slot)
                 view.layer?.addSublayer(tailLayer)
                 screenTailLayers.append(tailLayer)
             }
 
-            let layer = Self.makeEmojiLayer(image: image, bounds: bounds)
+            let layer = Self.makeEmojiLayer(art: art, bounds: bounds)
             // Subtle drop shadow for depth
             layer.shadowColor = NSColor.black.cgColor
             layer.shadowOpacity = 0.3
@@ -63,12 +62,13 @@ final class EmojiOverlay {
         tailLayers.removeAll()
     }
 
-    func setEmoji(_ emoji: String, size: CGFloat) {
-        let image = Self.render(emoji, size: size)
+    func setArt(_ art: CursorArt, size: CGFloat) {
         let bounds = CGRect(origin: .zero, size: CGSize(width: size, height: size))
-        for layer in emojiLayers + tailLayers.joined() {
-            layer.bounds = bounds
-            layer.contents = image
+        withoutAnimation {
+            for layer in emojiLayers + tailLayers.joined() {
+                layer.bounds = bounds
+                Self.apply(art, to: layer)
+            }
         }
     }
 
@@ -112,13 +112,41 @@ final class EmojiOverlay {
         CATransaction.commit()
     }
 
-    private static func makeEmojiLayer(image: CGImage?, bounds: CGRect) -> CALayer {
+    private static func makeEmojiLayer(art: CursorArt, bounds: CGRect) -> CALayer {
         let layer = CALayer()
         layer.bounds = bounds
         layer.anchorPoint = CGPoint(x: 0, y: 1)
         layer.contentsGravity = .resizeAspect
-        layer.contents = image
+        apply(art, to: layer)
         return layer
+    }
+
+    private static let framesKey = "frames"
+
+    /// Animated art plays as a Core Animation keyframe animation, so it
+    /// keeps going while the display link is paused.
+    private static func apply(_ art: CursorArt, to layer: CALayer) {
+        layer.removeAnimation(forKey: framesKey)
+        layer.contents = art.frames.first
+        guard art.isAnimated else { return }
+
+        let total = art.frameDurations.reduce(0, +)
+        var start = 0.0
+        var keyTimes: [NSNumber] = []
+        for duration in art.frameDurations {
+            keyTimes.append(NSNumber(value: start / total))
+            start += duration
+        }
+        keyTimes.append(1)  // discrete mode wants one more key time than values
+
+        let animation = CAKeyframeAnimation(keyPath: "contents")
+        animation.values = art.frames
+        animation.keyTimes = keyTimes
+        animation.calculationMode = .discrete
+        animation.duration = total
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        layer.add(animation, forKey: framesKey)
     }
 
     private static func tailTransform(slot: Int) -> CATransform3D {
@@ -140,18 +168,5 @@ final class EmojiOverlay {
             t = CATransform3DScale(t, 2.0 - jiggle.squash, jiggle.squash, 1)
         }
         return t
-    }
-
-    private static func render(_ emoji: String, size: CGFloat) -> CGImage? {
-        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            let str = NSAttributedString(string: emoji, attributes: [
-                .font: NSFont.systemFont(ofSize: size * 0.85)
-            ])
-            let strSize = str.size()
-            str.draw(at: NSPoint(x: (rect.width - strSize.width) / 2,
-                                 y: (rect.height - strSize.height) / 2))
-            return true
-        }
-        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 }
