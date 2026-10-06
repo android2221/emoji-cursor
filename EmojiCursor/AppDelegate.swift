@@ -3,6 +3,9 @@ import SwiftUI
 
 extension Notification.Name {
     static let popoverDidShow = Notification.Name("popoverDidShow")
+    /// Posted around the image picker so the popover stays open behind it.
+    static let imagePickerWillShow = Notification.Name("imagePickerWillShow")
+    static let imagePickerDidClose = Notification.Name("imagePickerDidClose")
 }
 
 @MainActor
@@ -44,6 +47,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.popover = popover
 
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(imagePickerWillShow),
+            name: .imagePickerWillShow, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(imagePickerDidClose),
+            name: .imagePickerDidClose, object: nil
+        )
+
         // Checked before activating, which saves the emoji.
         let defaults = UserDefaults.standard
         let isFirstLaunch = !defaults.bool(forKey: Self.hasLaunchedBeforeKey)
@@ -76,6 +88,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePopover(_ sender: NSStatusBarButton) {
         if popover?.isShown == true {
             popover?.performClose(sender)
+        } else {
+            showPopover()
+        }
+    }
+
+    /// A transient popover closes as soon as the open panel takes focus;
+    /// hold it open until the panel is done.
+    @objc private func imagePickerWillShow() {
+        popover?.behavior = .applicationDefined
+    }
+
+    @objc private func imagePickerDidClose() {
+        popover?.behavior = .transient
+        if popover?.isShown == true {
+            popover?.contentViewController?.view.window?.makeKey()
         } else {
             showPopover()
         }

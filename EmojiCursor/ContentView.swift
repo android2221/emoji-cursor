@@ -296,6 +296,8 @@ struct ContentView: View {
         panel.canChooseDirectories = false
         panel.message = "Choose a PNG, JPEG or GIF to follow your cursor"
         NSApp.activate()
+        NotificationCenter.default.post(name: .imagePickerWillShow, object: nil)
+        defer { NotificationCenter.default.post(name: .imagePickerDidClose, object: nil) }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try cursorManager.selectImage(at: url)
@@ -387,14 +389,14 @@ struct ContentView: View {
             Spacer()
 
             if cursorManager.isActive {
-                Button("Clear Emoji") {
+                Button("Clear") {
                     cursorManager.deactivate()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .keyboardShortcut(.return, modifiers: [])
             } else {
-                Button("Activate Emoji") {
+                Button("Activate") {
                     cursorManager.activate()
                 }
                 .buttonStyle(.borderedProminent)
